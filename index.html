@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Raumklima</title>
+<meta name="theme-color" content="#f6f5f2">
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1b; --muted: #6b6a66;
+    --line: #e4e2dc; --accent: #2f6f5e; --warn: #b4532a; --ok: #2f6f5e;
+    --c1: #2f6f9e; --c2: #c2652f; --c3: #7a5aa6; --c4: #3f8f5a; --c5: #8a8a85;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514; --card: #1f1f1d; --text: #ecebe6; --muted: #9b9a94;
+      --line: #33332f; --accent: #6cc0a5; --warn: #e48a5c; --ok: #6cc0a5;
+      --c1: #6aa8d8; --c2: #e48a5c; --c3: #b39ae0; --c4: #7cc48e; --c5: #b0b0aa;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+  header { display: flex; align-items: baseline; justify-content: space-between;
+           gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.01em; }
+  .updated { color: var(--muted); font-size: .85rem; }
+  .grid { display: grid; gap: 12px;
+          grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line);
+          border-radius: 14px; padding: 14px 16px; }
+  .card.outdoor { border-color: var(--accent); }
+  .card.stale .temp, .card.stale .hum { opacity: .45; }
+  .card h2 { font-size: .95rem; margin: 0 0 6px; display: flex;
+             align-items: center; gap: 8px; font-weight: 600; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .temp { font-size: 2.1rem; font-weight: 650; letter-spacing: -0.02em;
+          font-variant-numeric: tabular-nums; }
+  .hum { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+  .meta { color: var(--muted); font-size: .8rem; margin-top: 6px; }
+  .badge { font-size: .72rem; padding: 2px 7px; border-radius: 99px;
+           border: 1px solid currentColor; margin-left: auto; font-weight: 500; }
+  .badge.off { color: var(--warn); }
+  .badge.out { color: var(--accent); }
+  .hint { margin-top: 8px; font-size: .8rem; padding: 6px 8px; border-radius: 8px;
+          background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .hint.no { background: color-mix(in srgb, var(--muted) 12%, transparent); color: var(--muted); }
+  .hint.high { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+  section.chart { margin-top: 18px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px;
+         overflow: hidden; background: var(--card); }
+  .seg button { border: 0; background: none; color: var(--text); padding: 7px 12px;
+                font: inherit; font-size: .85rem; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .chartbox { position: relative; height: 340px; }
+  .error { color: var(--warn); }
+  @media (max-width: 520px) {
+    .grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .card { padding: 12px; }
+    .card.outdoor { grid-column: 1 / -1; }
+    .temp { font-size: 1.6rem; }
+    .hum { font-size: 1rem; }
+    .chartbox { height: 300px; }
+    .seg button { padding: 7px 10px; }
+  }
+  footer { color: var(--muted); font-size: .78rem; margin-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Raumklima</h1>
+    <span class="updated" id="updated">lädt …</span>
+  </header>
+
+  <div class="grid" id="cards"></div>
+
+  <section class="card chart">
+    <div class="controls">
+      <div class="seg" id="metric">
+        <button data-v="temp" aria-pressed="true">Temperatur</button>
+        <button data-v="hum" aria-pressed="false">Luftfeuchtigkeit</button>
+      </div>
+      <div class="seg" id="range">
+        <button data-v="24h" aria-pressed="true">24 h</button>
+        <button data-v="7d" aria-pressed="false">7 Tage</button>
+        <button data-v="30d" aria-pressed="false">30 Tage</button>
+        <button data-v="365d" aria-pressed="false">Jahr</button>
+      </div>
+    </div>
+    <div class="chartbox"><canvas id="chart"></canvas></div>
+  </section>
+
+  <footer>Aktualisiert sich alle 2 Minuten. Lüftungshinweis: Vergleich der absoluten Feuchte innen/aussen.</footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+// Adresse deines Cloudflare Workers (nach "npx wrangler deploy" angezeigt)
+const API = 'https://klima-api.DEINKONTO.workers.dev';
+
+const state = { metric: 'temp', range: '24h', data: null, chart: null };
+// Lücken bis zu dieser Dauer werden überbrückt (abhängig von der Mittelung)
+const GAP = { '24h': 20 * 60e3, '7d': 90 * 60e3, '30d': 9 * 3600e3, '365d': 3 * 86400e3 };
+const COLORS = ['--c1', '--c2', '--c3', '--c4', '--c5'];
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (n, d = 1) => n == null ? '–' : Number(n).toLocaleString('de-CH',
+  { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// Absolute Feuchte in g/m³
+function absHum(t, rh) {
+  return 6.112 * Math.exp(17.67 * t / (t + 243.5)) * rh * 2.1674 / (273.15 + t);
+}
+// Taupunkt (Magnus-Formel)
+function dewPoint(t, rh) {
+  const a = 17.62, b = 243.12, g = Math.log(rh / 100) + a * t / (b + t);
+  return b * g / (a - g);
+}
+function ago(sec) {
+  if (sec < 90) return 'gerade eben';
+  if (sec < 3600) return `vor ${Math.round(sec / 60)} Min.`;
+  if (sec < 86400) return `vor ${Math.round(sec / 3600)} Std.`;
+  return `vor ${Math.round(sec / 86400)} Tagen`;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function renderCards(d) {
+  const out = d.latest.find(s => s.outdoor && s.last && !s.stale);
+  const outAH = out ? absHum(out.last.temp, out.last.hum) : null;
+
+  document.getElementById('cards').innerHTML = d.latest.map((s, i) => {
+    const color = css(COLORS[i % COLORS.length]);
+    if (!s.last) {
+      return `<div class="card"><h2><span class="dot" style="background:${color}"></span>${esc(s.name)}
+        <span class="badge off">keine Daten</span></h2><div class="meta">Noch keine Messung empfangen.</div></div>`;
+    }
+    const L = s.last, mm = d.minmax[s.id];
+    const ah = absHum(L.temp, L.hum), dp = dewPoint(L.temp, L.hum);
+    let hint = '';
+    if (!s.outdoor && !s.stale && outAH != null) {
+      const diff = ah - outAH;
+      if (L.hum >= 60 && diff > 1) hint = `<div class="hint high">Feucht – Lüften senkt die Feuchte jetzt deutlich.</div>`;
+      else if (diff > 1) hint = `<div class="hint">Lüften würde die Luft trocknen.</div>`;
+      else if (diff < -1) hint = `<div class="hint no">Draussen feuchter – Lüften bringt Feuchte herein.</div>`;
+    }
+    const badge = s.stale ? `<span class="badge off">offline</span>`
+                : s.outdoor ? `<span class="badge out">aussen</span>` : '';
+    return `<div class="card${s.outdoor ? ' outdoor' : ''}${s.stale ? ' stale' : ''}">
+      <h2><span class="dot" style="background:${color}"></span>${esc(s.name)}${badge}</h2>
+      <div class="temp">${fmt(L.temp)} °C</div>
+      <div class="hum">${fmt(L.hum, 0)} % rF</div>
+      <div class="meta">Taupunkt ${fmt(dp)} °C · ${fmt(ah)} g/m³${L.pressure ? ` · ${fmt(L.pressure, 0)} hPa` : ''}</div>
+      ${mm ? `<div class="meta">24 h: ${fmt(mm.tmin)} – ${fmt(mm.tmax)} °C</div>` : ''}
+      <div class="meta">${ago(d.now - L.ts)}</div>
+      ${hint}
+    </div>`;
+  }).join('');
+}
+
+function renderChart(d) {
+  const idx = state.metric === 'temp' ? 1 : 2;
+  const datasets = d.latest.map((s, i) => ({
+    label: s.name,
+    data: (d.series[s.id] || []).map(p => ({ x: p[0] * 1000, y: p[idx] })),
+    borderColor: css(COLORS[i % COLORS.length]),
+    backgroundColor: css(COLORS[i % COLORS.length]),
+    borderWidth: s.outdoor ? 2.5 : 1.8,
+    borderDash: s.outdoor ? [5, 4] : [],
+    pointRadius: 0, tension: 0.25, spanGaps: GAP[state.range],
+  })).filter(ds => ds.data.length);
+
+  const long = state.range === '30d' || state.range === '365d';
+  const tickFmt = v => new Date(v).toLocaleString('de-CH', long
+      ? { day: 'numeric', month: 'short' }
+      : state.range === '7d' ? { weekday: 'short', day: 'numeric' }
+      : { hour: '2-digit', minute: '2-digit' });
+
+  const grid = css('--line'), text = css('--muted');
+  const opts = {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+      x: { type: 'linear', min: (d.now - ({ '24h': 86400, '7d': 604800, '30d': 2592000, '365d': 31536000 })[state.range]) * 1000,
+           max: d.now * 1000, ticks: { color: text, maxTicksLimit: 7, callback: tickFmt }, grid: { color: grid } },
+      y: { ticks: { color: text, callback: v => v + (state.metric === 'temp' ? ' °C' : ' %') }, grid: { color: grid } },
+    },
+    plugins: {
+      legend: { labels: { color: css('--text'), boxWidth: 12, boxHeight: 12 } },
+      tooltip: { callbacks: {
+        title: items => new Date(items[0].parsed.x).toLocaleString('de-CH',
+          { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        label: c => `${c.dataset.label}: ${fmt(c.parsed.y)} ${state.metric === 'temp' ? '°C' : '%'}`,
+      } },
+    },
+  };
+  if (state.chart) state.chart.destroy();
+  state.chart = new Chart(document.getElementById('chart'), { type: 'line', data: { datasets }, options: opts });
+}
+
+async function load() {
+  try {
+    const r = await fetch(`${API}/data?range=${state.range}`);
+    if (!r.ok) throw new Error(r.status);
+    state.data = await r.json();
+    // Aussen-Sensor zuerst anzeigen
+    state.data.latest.sort((a, b) => b.outdoor - a.outdoor);
+    renderCards(state.data);
+    renderChart(state.data);
+    document.getElementById('updated').textContent =
+      'Stand ' + new Date(state.data.now * 1000).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    document.getElementById('updated').innerHTML = `<span class="error">Daten nicht erreichbar (${esc(e.message)})</span>`;
+  }
+}
+
+function seg(id, key, reload) {
+  document.getElementById(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    state[key] = b.dataset.v;
+    for (const x of e.currentTarget.querySelectorAll('button')) x.setAttribute('aria-pressed', x === b);
+    reload ? load() : renderChart(state.data);
+  });
+}
+seg('metric', 'metric', false);
+seg('range', 'range', true);
+load();
+// Alle 2 Minuten neu laden, aber nur wenn die Seite sichtbar ist
+setInterval(() => { if (document.visibilityState === 'visible') load(); }, 120000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.data && Date.now() / 1000 - state.data.now > 110) load();
+});
+</script>
+</body>
+</html>

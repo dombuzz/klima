@@ -635,7 +635,7 @@ function renderForecast(fc) {
   });
   document.getElementById('fcsum').innerHTML = forecastSummary(fc.rows, NOW);
   document.getElementById('fcsrc').textContent = fc.live
-    ? 'Prognose: MeteoSchweiz-Modell (ICON) über Open-Meteo, Standort 46,838° N, 9,569° O. Gemessen: Fantasiedaten.'
+    ? 'Prognose: MeteoSchweiz-Modell (ICON) über Open-Meteo, Standort: Home. Gemessen: Fantasiedaten.'
     : 'Prognose: Fantasiedaten, der Abruf bei Open-Meteo war hier nicht möglich. Auf klima.dombuzz.ch/proto.html wird die echte Prognose geladen.';
 }
 

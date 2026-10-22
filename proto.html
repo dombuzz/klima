@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>:root { color-scheme: light; } [hidden] { display: none !important; }</style>
+<title>Raumklima Prototyp</title>
+<style>
+  /* Layout: Raumkarten oben (Wert, Mini-Verlauf), darunter ein Diagramm für den gewählten Raum.
+     Farben und Schrift stammen vom bestehenden Dashboard klima.dombuzz.ch. */
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1b; --muted: #6b6a66;
+    --line: #e4e2dc; --accent: #2f6f5e; --warn: #b4532a;
+    --c1: #2f6f9e; --c2: #c2652f; --c3: #7a5aa6; --c4: #3f8f5a; --c5: #8a8a85;
+    --night: rgba(29, 29, 27, .17); --tipbg: #1d1d1b; --tipfg: #f6f5f2;
+    --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --card: #1f1f1d; --text: #ecebe6; --muted: #9b9a94;
+      --line: #33332f; --accent: #6cc0a5; --warn: #e48a5c;
+      --c1: #6aa8d8; --c2: #e48a5c; --c3: #b39ae0; --c4: #7cc48e; --c5: #b0b0aa;
+      --night: rgba(236, 235, 230, .17); --tipbg: #ecebe6; --tipfg: #151514;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151514; --card: #1f1f1d; --text: #ecebe6; --muted: #9b9a94;
+    --line: #33332f; --accent: #6cc0a5; --warn: #e48a5c;
+    --c1: #6aa8d8; --c2: #e48a5c; --c3: #b39ae0; --c4: #7cc48e; --c5: #b0b0aa;
+    --night: rgba(236, 235, 230, .17); --tipbg: #ecebe6; --tipfg: #151514;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 var(--font);
+         padding-block: 20px 40px;
+         padding-left: max(16px, env(safe-area-inset-left, 0px));
+         padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  main { max-width: 1100px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; justify-content: space-between;
+           gap: 8px 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.01em; }
+  .updated { color: var(--muted); font-size: .85rem; }
+  .proto { display: inline-block; margin-bottom: 16px; font-size: .8rem; padding: 4px 10px;
+           border-radius: 99px; border: 1px dashed var(--warn); color: var(--warn); }
+
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+          padding: 14px 16px 12px; min-width: 0; cursor: pointer;
+          transition: border-color .15s ease, box-shadow .15s ease; }
+  .card:hover { border-color: var(--rc); }
+  .card.sel { border-color: var(--rc); box-shadow: 0 0 0 1px var(--rc); }
+  .card h2 { font-size: .95rem; margin: 0 0 6px; display: flex; align-items: center;
+             gap: 8px; font-weight: 600; flex-wrap: wrap; row-gap: 4px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--rc); }
+  .pick { border: 0; background: none; padding: 0; margin: 0; font: inherit; color: inherit;
+          font-weight: inherit; cursor: pointer; text-align: left; }
+  .pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+  .badge { white-space: nowrap; font-size: .72rem; padding: 2px 7px; border-radius: 99px;
+           border: 1px solid var(--accent); color: var(--accent); margin-left: auto; font-weight: 500; }
+  .temp { font-size: 2.1rem; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .hum { font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+  .meta { color: var(--muted); font-size: .8rem; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .tip { border-bottom: 1px dotted currentColor; cursor: help; }
+  .tip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+  .spark { position: relative; height: 32px; margin-top: 10px; padding-right: 5px; }
+  .spark svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .spark .line { fill: none; stroke: var(--rc); stroke-width: 1.7; vector-effect: non-scaling-stroke;
+                 stroke-linejoin: round; stroke-linecap: round; }
+  .spark .area { fill: var(--rc); fill-opacity: .12; stroke: none; }
+  .spark .end { position: absolute; right: 0; width: 7px; height: 7px; border-radius: 50%;
+                background: var(--rc); transform: translateY(-50%); box-shadow: 0 0 0 2px var(--card); }
+
+  section.chart { margin-top: 18px; background: var(--card); border: 1px solid var(--line);
+                  border-radius: 14px; padding: 14px 16px 12px; min-width: 0; }
+  .charthead { display: flex; align-items: center; justify-content: space-between;
+               gap: 10px 16px; flex-wrap: wrap; margin-bottom: 10px; }
+  .charthead h2 { margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
+  .charthead .sub { color: var(--muted); font-size: .82rem; font-weight: 400; }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--line);
+         border-radius: 999px; background: var(--card); }
+  .seg button { border: 0; background: none; color: var(--text); padding: 6px 13px;
+                border-radius: 999px; font: inherit; font-size: .85rem; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chartbox { position: relative; height: 340px; }
+  .key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 10px; color: var(--muted); font-size: .8rem; }
+  .key i { width: 22px; height: 12px; border-radius: 3px; border: 1px solid var(--line);
+           background-image: repeating-linear-gradient(135deg, var(--night) 0 1px, transparent 1px 5px); }
+
+  #tipbox { position: fixed; z-index: 20; max-width: min(260px, calc(100vw - 16px)); padding: 8px 10px;
+            border-radius: 8px; background: var(--tipbg); color: var(--tipfg); font-size: .8rem;
+            line-height: 1.4; pointer-events: none; left: 0; top: 0; }
+  footer { color: var(--muted); font-size: .78rem; margin-top: 16px; }
+
+  @media (max-width: 520px) {
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .card { padding: 12px 12px 10px; }
+    .card.outdoor { grid-column: 1 / -1; }
+    .temp { font-size: 1.6rem; }
+    .hum { font-size: 1rem; }
+    .chartbox { height: 300px; }
+    section.chart { padding: 12px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Raumklima</h1>
+    <span class="updated" id="updated"></span>
+  </header>
+  <span class="proto">Prototyp mit Fantasiedaten</span>
+
+  <div class="grid" id="cards"></div>
+
+  <section class="chart">
+    <div class="charthead">
+      <h2><span class="dot" id="chartdot"></span><span id="charttitle"></span>
+        <span class="sub" id="chartsub">Temperatur und Luftfeuchtigkeit</span></h2>
+      <div class="controls">
+      <div class="seg" id="mode">
+        <button data-v="single" aria-pressed="true">Einzeln</button>
+        <button data-v="compare" aria-pressed="false">Vergleich</button>
+      </div>
+      <div class="seg" id="metric" hidden>
+        <button data-v="temp" aria-pressed="true">Temperatur</button>
+        <button data-v="ah" aria-pressed="false">Absolute Feuchte</button>
+      </div>
+      <div class="seg" id="range">
+        <button data-v="24h" aria-pressed="true">24 h</button>
+        <button data-v="7d" aria-pressed="false">7 Tage</button>
+        <button data-v="30d" aria-pressed="false">30 Tage</button>
+        <button data-v="365d" aria-pressed="false">Jahr</button>
+      </div>
+      </div>
+    </div>
+    <div class="chartbox"><canvas id="chart"></canvas></div>
+    <div class="key"><i id="nighti" aria-hidden="true"></i><span id="nightt">Schraffiert: Nacht (20:00 bis 06:00 Uhr)</span><span id="cmpnote" hidden>· Absolute Feuchte statt rF: unabhängig von der Raumtemperatur und deshalb zwischen Räumen vergleichbar.</span></div>
+  </section>
+
+  <footer>Alle Werte sind erfunden. Die Mini-Verläufe zeigen immer die letzten 24 Stunden. Klick auf eine Karte zeigt deren Verlauf, im Vergleich hebt sie ihre Linie hervor.</footer>
+</main>
+<div id="tipbox" role="tooltip" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const ROOMS = [
+  { id: 'aussen', name: 'Aussen', outdoor: true },
+  { id: 'wohnzimmer', name: 'Wohnzimmer' },
+  { id: 'schlafzimmer', name: 'Schlafzimmer' },
+  { id: 'kinderzimmer', name: 'Kinderzimmer' },
+  { id: 'buero', name: 'Büro' },
+];
+const COLORS = ['--c1', '--c2', '--c3', '--c4', '--c5'];
+const STEP = 600000, PER_DAY = 144, DAYS = 7;
+const NIGHT_START = [20, 0], NIGHT_END = [6, 0];
+const TIPS = {
+  rf: 'Relative Feuchte: wie viel Wasserdampf die Luft im Verhältnis zum Maximum bei dieser Temperatur enthält. Angenehm sind etwa 40 bis 60 %.',
+  dew: 'Taupunkt: Bei dieser Temperatur schlägt sich Feuchte als Wasser nieder. Ist eine Wand oder Fensterscheibe kälter, droht Schimmel.',
+  ah: 'Absolute Feuchte: tatsächliche Wassermenge pro Kubikmeter Luft. Damit lässt sich innen und aussen vergleichen, etwa fürs Lüften.',
+};
+const state = { sel: 'wohnzimmer', range: '24h', chart: null, mode: 'single', metric: 'temp', hl: null };
+const activeId = () => state.mode === 'single' ? state.sel : state.hl;
+
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (n, d = 1) => Number(n).toLocaleString('de-CH', { minimumFractionDigits: d, maximumFractionDigits: d });
+const hexA = (hex, a) => {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex); if (!m) return hex;
+  const n = parseInt(m[1], 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+};
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const gauss = (h, c, s) => Math.exp(-0.5 * ((h - c) / s) ** 2);
+function absHum(t, rh) { return 6.112 * Math.exp(17.67 * t / (t + 243.5)) * rh * 2.1674 / (273.15 + t); }
+function dewPoint(t, rh) { const a = 17.62, b = 243.12, g = Math.log(rh / 100) + a * t / (b + t); return b * g / (a - g); }
+
+/* ---------- Fantasiedaten ---------- */
+function rng(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+// Lüftungszeiten pro Raum (Stunde als Dezimalzahl), Büro nur an Werktagen
+const VENT = {
+  wohnzimmer: [8.0, 13.0, 20.5],
+  schlafzimmer: [7.2],
+  kinderzimmer: [7.8, 17.0],
+  buero: [9.5, 12.25, 15.5],
+};
+const PROFILE = {
+  wohnzimmer:   { base: 21.0, hbase: 47, bumpT: h => 0.9 * gauss(h, 19.5, 1.8), bumpH: h => 5 * gauss(h, 19, 1.2) },
+  schlafzimmer: { base: 18.4, hbase: 52, bumpT: h => 0.5 * gauss(h, 3, 3),      bumpH: h => 6 * gauss(h, 3, 3) },
+  kinderzimmer: { base: 20.0, hbase: 50, bumpT: h => 0.6 * gauss(h, 13, 2.5),   bumpH: h => 3 * gauss(h, 2, 3) },
+  buero:        { base: 20.3, hbase: 44, bumpT: () => 0, bumpH: () => 0 },
+};
+const season = t => {
+  const d = new Date(t), doy = Math.floor((t - new Date(d.getFullYear(), 0, 0)) / 864e5);
+  return 9.5 + 10 * Math.sin(2 * Math.PI * (doy - 110) / 365);
+};
+// smooth = Tagesmittelwerte (ohne Tagesgang und Lüftungsspitzen), wie sie der Worker für lange Zeiträume liefert
+function generate(STEP, N, smooth) {
+  const end = Math.floor(Date.now() / STEP) * STEP, start = end - (N - 1) * STEP;
+  const R = rng(42), ph = [R() * 6.28, R() * 6.28];
+  const series = {};
+  const events = {};
+  for (const id of Object.keys(VENT)) {
+    events[id] = [];
+    const d = new Date(start); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - 1);
+    for (; d.getTime() <= end + 864e5; d.setDate(d.getDate() + 1)) {
+      const weekend = d.getDay() === 0 || d.getDay() === 6;
+      if (id === 'buero' && weekend) continue;
+      for (const hh of VENT[id]) events[id].push(d.getTime() + (hh + (R() - .5) * 0.5) * 3600000);
+    }
+  }
+  const noise = { aussen: [0, 0] };
+  for (const id of Object.keys(VENT)) noise[id] = [0, 0];
+  for (const r of ROOMS) series[r.id] = [];
+  for (let i = 0; i < N; i++) {
+    const t = start + i * STEP, d = new Date(t);
+    const h = smooth ? -99 : d.getHours() + d.getMinutes() / 60, wd = d.getDay(), days = (t - start) / 864e5;
+    const weather = 2.2 * Math.sin(days * 1.1 + ph[0]) + 1.2 * Math.sin(days * 2.9 + ph[1])
+      + (N * STEP > 8 * 864e5 ? 2.5 * Math.sin(days * 0.2 + ph[0]) * (1 - days / (N * STEP / 864e5)) : 0);
+    const no = noise.aussen;
+    no[0] = no[0] * 0.92 + (R() - .5) * 0.18; no[1] = no[1] * 0.92 + (R() - .5) * 1.6;
+    const To = season(t) + (smooth ? 0 : 5.2 * Math.sin((h - 9) * Math.PI / 12)) + weather + no[0];
+    const Ho = clamp(76 - 3.3 * (To - 9) + 7 * Math.sin(days * 0.9 + ph[1]) + no[1], 35, 97);
+    series.aussen.push([t, +To.toFixed(2), +Ho.toFixed(1)]);
+    for (const id of Object.keys(PROFILE)) {
+      const p = PROFILE[id], n = noise[id];
+      n[0] = n[0] * 0.9 + (R() - .5) * 0.1; n[1] = n[1] * 0.9 + (R() - .5) * 0.9;
+      let f = 0;
+      if (!smooth) for (const ev of events[id]) {
+        const dt = (t - ev) / 60000;
+        if (dt >= 0 && dt < 300) f = Math.max(f, (1 - Math.exp(-dt / 6)) * Math.exp(-dt / 50));
+      }
+      let work = 0;
+      if (id === 'buero' && wd !== 0 && wd !== 6) work = smooth ? 0.45 : clamp((h - 7.8) / 1.2, 0, 1) * clamp((17.8 - h) / 1.2, 0, 1);
+      const T = p.base + 0.14 * (To - 9) + p.bumpT(h) + 1.7 * work - 2.0 * f + n[0];
+      const H = clamp(p.hbase - 1.8 * (T - p.base) + p.bumpH(h) - 3 * work + 0.12 * (Ho - 70) - 9 * f + n[1], 28, 75);
+      series[id].push([t, +T.toFixed(2), +H.toFixed(1)]);
+    }
+  }
+  return { series, now: end };
+}
+const DATA = generate(STEP, DAYS * PER_DAY, false);
+const LONG = { '30d': generate(3600000, 30 * 24, false), '365d': generate(864e5, 365, true) };
+function rowsOf(id) {
+  if (state.range === '24h') return DATA.series[id].slice(-PER_DAY);
+  if (state.range === '7d') return DATA.series[id];
+  return LONG[state.range].series[id];
+}
+const TICK_OPTS = { '24h': { hour: '2-digit', minute: '2-digit' }, '7d': { weekday: 'short', day: 'numeric' },
+                    '30d': { day: 'numeric', month: 'short' }, '365d': { month: 'short' } };
+const TIP_OPTS = { '24h': 'dt', '7d': 'dt', '30d': 'dt', '365d': 'd' };
+
+/* ---------- Karten ---------- */
+function spark(rows, rc) {
+  const v = rows.map(r => r[1]);
+  const mn = Math.min(...v), mx = Math.max(...v), span = Math.max(mx - mn, 1.5), lo = (mx + mn) / 2 - span / 2;
+  const n = rows.length, y = val => 29 - (val - lo) / span * 26;
+  const idx = []; for (let i = 0; i < n; i += 3) idx.push(i); if (idx[idx.length - 1] !== n - 1) idx.push(n - 1);
+  const pts = idx.map(i => `${(i / (n - 1) * 120).toFixed(1)},${y(rows[i][1]).toFixed(1)}`);
+  const yEnd = y(rows[n - 1][1]);
+  return `<div class="spark" aria-hidden="true">
+    <svg viewBox="0 0 120 32" preserveAspectRatio="none">
+      <polygon class="area" points="0,32 ${pts.join(' ')} 120,32"/>
+      <polyline class="line" points="${pts.join(' ')}"/>
+    </svg><span class="end" style="top:${(yEnd / 32 * 100).toFixed(1)}%"></span></div>`;
+}
+function renderCards() {
+  document.getElementById('cards').innerHTML = ROOMS.map((r, i) => {
+    const rows = DATA.series[r.id], last = rows[rows.length - 1], day = rows.slice(-PER_DAY);
+    const tmin = Math.min(...day.map(x => x[1])), tmax = Math.max(...day.map(x => x[1]));
+    const dp = dewPoint(last[1], last[2]), ah = absHum(last[1], last[2]);
+    return `<article class="card${r.outdoor ? ' outdoor' : ''}${r.id === activeId() ? ' sel' : ''}" data-id="${r.id}" style="--rc:var(${COLORS[i]})">
+      <h2><span class="dot"></span><button class="pick" type="button" aria-pressed="${r.id === activeId()}">${r.name}</button></h2>
+      <div class="temp">${fmt(last[1])} °C</div>
+      <div class="hum">${fmt(last[2], 0)} % <span class="tip" tabindex="0" data-tip="${TIPS.rf}">rF</span></div>
+      <div class="meta"><span class="tip" tabindex="0" data-tip="${TIPS.dew}">Taupunkt</span> ${fmt(dp)} °C · ${fmt(ah)} <span class="tip" tabindex="0" data-tip="${TIPS.ah}">g/m³</span></div>
+      ${spark(day, i)}
+      <div class="meta">24 h: ${fmt(tmin)} – ${fmt(tmax)} °C</div>
+    </article>`;
+  }).join('');
+}
+
+/* ---------- Diagramm: zwei Achsen, Nacht schraffiert ---------- */
+function nightSpans(min, max) {
+  const spans = [], d = new Date(min);
+  d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - 1);
+  for (; d.getTime() <= max; d.setDate(d.getDate() + 1)) {
+    const s = new Date(d); s.setHours(NIGHT_START[0], NIGHT_START[1], 0, 0);
+    const e = new Date(d); e.setDate(e.getDate() + 1); e.setHours(NIGHT_END[0], NIGHT_END[1], 0, 0);
+    if (e.getTime() > min && s.getTime() < max) spans.push([s.getTime(), e.getTime()]);
+  }
+  return spans;
+}
+function nightPattern(ctx, color) {
+  const c = document.createElement('canvas'); c.width = c.height = 8;
+  const g = c.getContext('2d'); g.strokeStyle = color; g.lineWidth = 1.3; g.beginPath();
+  g.moveTo(-1, 9); g.lineTo(9, -1); g.moveTo(-1, 1); g.lineTo(1, -1); g.moveTo(7, 9); g.lineTo(9, 7); g.stroke();
+  return ctx.createPattern(c, 'repeat');
+}
+const nightPlugin = {
+  id: 'night',
+  beforeDatasetsDraw(chart, _args, opt) {
+    if (opt.skip) return;
+    const { ctx, chartArea: a, scales: { x } } = chart;
+    ctx.save(); ctx.beginPath(); ctx.rect(a.left, a.top, a.width, a.height); ctx.clip();
+    ctx.fillStyle = nightPattern(ctx, opt.color);
+    for (const [s, e] of nightSpans(x.min, x.max)) {
+      const x0 = x.getPixelForValue(Math.max(s, x.min)), x1 = x.getPixelForValue(Math.min(e, x.max));
+      ctx.fillRect(x0, a.top, x1 - x0, a.height);
+    }
+    ctx.restore();
+  },
+};
+const tipOpts = () => state.range === '365d'
+  ? { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }
+  : { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+function tickValues(min, max, range) {
+  const v = [];
+  if (range === '30d' || range === '365d') {
+    const d = new Date(min); d.setHours(0, 0, 0, 0);
+    for (; d.getTime() <= max; d.setDate(d.getDate() + 1)) {
+      if (d.getTime() >= min && (range === '365d' ? d.getDate() === 1 : d.getDay() === 1)) v.push(d.getTime());
+    }
+    return v;
+  }
+  for (let t = Math.ceil(min / 3600000) * 3600000; t <= max; t += 3600000) {
+    const d = new Date(t);
+    if (range === '24h' ? d.getHours() % 4 === 0 : (d.getHours() === 0 && d.getMinutes() === 0)) v.push(t);
+  }
+  return v;
+}
+function renderSingle() {
+  const i = ROOMS.findIndex(r => r.id === state.sel), room = ROOMS[i];
+  const col = css(COLORS[i]), muted = css('--muted'), grid = css('--line');
+  const rows = rowsOf(room.id);
+  const xmin = rows[0][0], xmax = rows[rows.length - 1][0];
+  const temp = rows.map(r => ({ x: r[0], y: r[1] })), hum = rows.map(r => ({ x: r[0], y: r[2] }));
+  const tickFmt = v => new Date(v).toLocaleString('de-CH', TICK_OPTS[state.range]);
+  if (state.chart) state.chart.destroy();
+  state.chart = new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: { datasets: [
+      { label: 'Temperatur (°C)', data: temp, yAxisID: 'y', borderColor: col, backgroundColor: col,
+        borderWidth: 2.2, pointRadius: 0, tension: 0.25, order: 1 },
+      { label: 'Luftfeuchtigkeit (% rF)', data: hum, yAxisID: 'y2', borderColor: hexA(col, .55),
+        backgroundColor: hexA(col, .16), fill: 'origin', borderWidth: 1, pointRadius: 0, tension: 0.25, order: 2 },
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { type: 'linear', min: xmin, max: xmax, grid: { color: grid },
+             afterBuildTicks: s => { s.ticks = tickValues(xmin, xmax, state.range).map(value => ({ value })); },
+             ticks: { color: muted, callback: tickFmt, maxRotation: 0 } },
+        y: { position: 'left', grace: '12%', grid: { color: grid },
+             title: { display: true, text: 'Temperatur °C', color: muted },
+             ticks: { color: muted, callback: v => v + ' °' } },
+        y2: { position: 'right', suggestedMin: 20, suggestedMax: 80, grid: { drawOnChartArea: false },
+              title: { display: true, text: 'Luftfeuchtigkeit % rF', color: muted },
+              ticks: { color: muted, callback: v => v + ' %' } },
+      },
+      plugins: {
+        night: { color: css('--night'), skip: state.range === '30d' || state.range === '365d' },
+        legend: { labels: { color: css('--text'), boxWidth: 14, boxHeight: 12 } },
+        tooltip: { callbacks: {
+          title: it => new Date(it[0].parsed.x).toLocaleString('de-CH', tipOpts()),
+          label: c => c.datasetIndex === 0 ? `Temperatur: ${fmt(c.parsed.y)} °C` : `Luftfeuchtigkeit: ${fmt(c.parsed.y, 0)} % rF`,
+        } },
+      },
+    },
+    plugins: [nightPlugin],
+  });
+  document.getElementById('charttitle').textContent = room.name;
+  document.getElementById('chartdot').style.background = col;
+}
+
+/* ---------- Vergleich: alle Räume, eine Messgrösse ---------- */
+function renderCompare() {
+  const ah = state.metric === 'ah', hl = state.hl, unit = ah ? 'g/m³' : '°C';
+  const ref = rowsOf('aussen');
+  const xmin = ref[0][0], xmax = ref[ref.length - 1][0];
+  const muted = css('--muted'), grid = css('--line');
+  const tickFmt = v => new Date(v).toLocaleString('de-CH', TICK_OPTS[state.range]);
+  const datasets = ROOMS.map((r, i) => {
+    const col = css(COLORS[i]);
+    return {
+      label: r.name,
+      data: rowsOf(r.id).map(p => ({ x: p[0], y: ah ? absHum(p[1], p[2]) : p[1] })),
+      borderColor: !hl || hl === r.id ? col : hexA(col, .3), backgroundColor: col,
+      borderWidth: hl === r.id ? 3.2 : 2, borderDash: r.outdoor ? [5, 4] : [],
+      pointRadius: 0, tension: 0.25, order: hl === r.id ? 0 : 1,
+    };
+  });
+  if (state.chart) state.chart.destroy();
+  state.chart = new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { type: 'linear', min: xmin, max: xmax, grid: { color: grid },
+             afterBuildTicks: s => { s.ticks = tickValues(xmin, xmax, state.range).map(value => ({ value })); },
+             ticks: { color: muted, callback: tickFmt, maxRotation: 0 } },
+        y: { position: 'left', grace: '10%', grid: { color: grid },
+             title: { display: true, text: ah ? 'Absolute Feuchte g/m³' : 'Temperatur °C', color: muted },
+             ticks: { color: muted, callback: v => ah ? fmt(v, 0) : v + ' °' } },
+      },
+      plugins: {
+        night: { color: css('--night'), skip: state.range === '30d' || state.range === '365d' },
+        legend: { labels: { color: css('--text'), boxWidth: 14, boxHeight: 12 } },
+        tooltip: { itemSort: (a, b) => b.parsed.y - a.parsed.y, callbacks: {
+          title: it => new Date(it[0].parsed.x).toLocaleString('de-CH', tipOpts()),
+          label: c => `${c.dataset.label}: ${fmt(c.parsed.y)} ${unit}`,
+        } },
+      },
+    },
+    plugins: [nightPlugin],
+  });
+  document.getElementById('charttitle').textContent = 'Vergleich';
+}
+function renderChart() {
+  const single = state.mode === 'single';
+  document.getElementById('metric').hidden = single;
+  document.getElementById('cmpnote').hidden = single || state.metric !== 'ah';
+  document.getElementById('chartdot').hidden = !single;
+  const longR = state.range === '30d' || state.range === '365d';
+  document.getElementById('nighti').hidden = longR; document.getElementById('nightt').hidden = longR;
+  document.getElementById('chartsub').textContent = single ? 'Temperatur und Luftfeuchtigkeit'
+    : state.metric === 'ah' ? 'Absolute Feuchte, alle Räume' : 'Temperatur, alle Räume';
+  if (single) renderSingle(); else renderCompare();
+}
+
+/* ---------- Auswahl ---------- */
+function markCards() {
+  const act = activeId();
+  for (const c of document.querySelectorAll('.card')) {
+    const on = c.dataset.id === act;
+    c.classList.toggle('sel', on);
+    c.querySelector('.pick').setAttribute('aria-pressed', on);
+  }
+}
+function select(id) {
+  if (state.mode === 'single') state.sel = id; else state.hl = state.hl === id ? null : id;
+  const act = activeId();
+  for (const c of document.querySelectorAll('.card')) {
+    const on = c.dataset.id === act;
+    c.classList.toggle('sel', on);
+    c.querySelector('.pick').setAttribute('aria-pressed', on);
+  }
+  renderChart();
+}
+document.getElementById('cards').addEventListener('click', e => {
+  if (e.target.closest('.tip')) return;
+  const c = e.target.closest('.card'); if (c) select(c.dataset.id);
+});
+document.getElementById('range').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.getAttribute('aria-pressed') === 'true') return;
+  state.range = b.dataset.v;
+  for (const x of document.querySelectorAll('#range button')) x.setAttribute('aria-pressed', x === b);
+  renderChart();
+});
+
+for (const key of ['mode', 'metric']) {
+  document.getElementById(key).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || b.getAttribute('aria-pressed') === 'true') return;
+    state[key] = b.dataset.v;
+    for (const x of document.querySelectorAll('#' + key + ' button')) x.setAttribute('aria-pressed', x === b);
+    markCards(); renderChart();
+  });
+}
+
+/* ---------- Kurzer Tooltip für Fachbegriffe ---------- */
+const tipbox = document.getElementById('tipbox');
+function showTip(el) {
+  tipbox.textContent = el.dataset.tip; tipbox.hidden = false;
+  const r = el.getBoundingClientRect(), w = tipbox.offsetWidth, h = tipbox.offsetHeight;
+  const left = clamp(r.left + r.width / 2 - w / 2, 8, Math.max(8, window.innerWidth - w - 8));
+  let top = r.top - h - 8; if (top < 8) top = r.bottom + 8;
+  tipbox.style.left = left + 'px'; tipbox.style.top = top + 'px';
+}
+const hideTip = () => { tipbox.hidden = true; };
+document.addEventListener('mouseover', e => { const t = e.target.closest('.tip'); if (t) showTip(t); });
+document.addEventListener('mouseout', e => { if (e.target.closest('.tip')) hideTip(); });
+document.addEventListener('focusin', e => { const t = e.target.closest('.tip'); if (t) showTip(t); });
+document.addEventListener('focusout', e => { if (e.target.closest('.tip')) hideTip(); });
+document.addEventListener('click', e => { const t = e.target.closest('.tip'); if (t) showTip(t); else hideTip(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hideTip(); });
+window.addEventListener('scroll', hideTip, { passive: true });
+
+/* ---------- Start ---------- */
+document.getElementById('updated').textContent =
+  'Stand ' + new Date(DATA.now).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+renderCards();
+renderChart();
+// Diagramm bei Wechsel hell/dunkel neu zeichnen
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => renderChart());
+new MutationObserver(() => renderChart()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+</script>
+</body>
+</html>

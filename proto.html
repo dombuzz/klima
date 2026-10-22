@@ -17,7 +17,7 @@
     --line: #e4e2dc; --accent: #2f6f5e; --warn: #b4532a;
     --c1: #2f6f9e; --c2: #c2652f; --c3: #7a5aa6; --c4: #3f8f5a; --c5: #8a8a85;
     --night: rgba(29, 29, 27, .17); --tipbg: #1d1d1b; --tipfg: #f6f5f2;
-    --g-mode: #1d1d1b; --g-metric: #a8476b; --g-range: #8a6a10; --gon: #ffffff;
+    --g-mode: #1d1d1b; --g-metric: #a8476b; --g-range: #8a6a10; --gon: #ffffff; --rain: #4a8f9c;
     --font: system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   @media (prefers-color-scheme: dark) {
@@ -26,7 +26,7 @@
       --line: #33332f; --accent: #6cc0a5; --warn: #e48a5c;
       --c1: #6aa8d8; --c2: #e48a5c; --c3: #b39ae0; --c4: #7cc48e; --c5: #b0b0aa;
       --night: rgba(236, 235, 230, .17); --tipbg: #ecebe6; --tipfg: #151514;
-      --g-mode: #ecebe6; --g-metric: #d77a9c; --g-range: #d9b44a; --gon: #151514;
+      --g-mode: #ecebe6; --g-metric: #d77a9c; --g-range: #d9b44a; --gon: #151514; --rain: #7fc3cf;
       color-scheme: dark;
     }
   }
@@ -35,7 +35,7 @@
     --line: #33332f; --accent: #6cc0a5; --warn: #e48a5c;
     --c1: #6aa8d8; --c2: #e48a5c; --c3: #b39ae0; --c4: #7cc48e; --c5: #b0b0aa;
     --night: rgba(236, 235, 230, .17); --tipbg: #ecebe6; --tipfg: #151514;
-      --g-mode: #ecebe6; --g-metric: #d77a9c; --g-range: #d9b44a; --gon: #151514;
+      --g-mode: #ecebe6; --g-metric: #d77a9c; --g-range: #d9b44a; --gon: #151514; --rain: #7fc3cf;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -106,6 +106,8 @@
   .key i { width: 22px; height: 12px; border-radius: 3px; border: 1px solid var(--line);
            background-image: repeating-linear-gradient(135deg, var(--night) 0 1px, transparent 1px 5px); }
 
+  .fcsum { margin: 0 0 10px; font-size: .95rem; }
+  .fcsum b { font-variant-numeric: tabular-nums; }
   #tipbox { position: fixed; z-index: 20; max-width: min(260px, calc(100vw - 16px)); padding: 8px 10px;
             border-radius: 8px; background: var(--tipbg); color: var(--tipfg); font-size: .8rem;
             line-height: 1.4; pointer-events: none; left: 0; top: 0; }
@@ -160,7 +162,17 @@
     <div class="key"><i id="nighti" aria-hidden="true"></i><span id="nightt">Schraffiert: Nacht (20:00 bis 06:00 Uhr)</span><span id="cmphint" hidden>Karten anklicken, um Räume ein- oder auszublenden.</span><button type="button" class="linkbtn" id="cmpall" hidden>Alle Räume zeigen</button><span id="cmpnote" hidden></span></div>
   </section>
 
-  <footer>Alle Werte sind erfunden. Die Mini-Verläufe zeigen immer die letzten 24 Stunden. Klick auf eine Karte zeigt deren Verlauf, im Vergleich hebt sie ihre Linie hervor.</footer>
+  <section class="chart" id="fc">
+    <div class="charthead">
+      <h2><span class="dot" style="background: var(--c1)"></span>Prognose Aussen
+        <span class="sub">gemessen und erwartet</span></h2>
+    </div>
+    <p class="fcsum" id="fcsum">Prognose wird geladen …</p>
+    <div class="chartbox"><canvas id="fcchart"></canvas></div>
+    <div class="key"><span id="fcsrc"></span></div>
+  </section>
+
+  <footer>Alle Messwerte sind erfunden. Die Prognose kommt live von Open-Meteo, sofern der Abruf möglich ist. Die Mini-Verläufe zeigen immer die letzten 24 Stunden. Klick auf eine Karte zeigt deren Verlauf, im Vergleich hebt sie ihre Linie hervor.</footer>
 </main>
 <div id="tipbox" role="tooltip" hidden></div>
 
@@ -520,14 +532,122 @@ document.addEventListener('click', e => { const t = e.target.closest('.tip'); if
 document.addEventListener('keydown', e => { if (e.key === 'Escape') hideTip(); });
 window.addEventListener('scroll', hideTip, { passive: true });
 
+/* ---------- Prognose Aussen (Open-Meteo, MeteoSchweiz-Modell) ---------- */
+const LAT = 46.83791, LON = 9.568806;
+let FC = null, fcChart = null;
+function fakeForecast() {
+  const last = DATA.series.aussen[DATA.series.aussen.length - 1];
+  const hrOf = t => { const d = new Date(t); return d.getHours() + d.getMinutes() / 60; };
+  const diu = t => 5.2 * Math.sin((hrOf(t) - 9) * Math.PI / 12);
+  const base = last[1] - diu(last[0]), rows = [];
+  for (let k = 0; k <= 72; k++) {
+    const t = Math.ceil(DATA.now / 3600e3) * 3600e3 + (k - 24) * 3600e3;
+    rows.push([t, +(base - 0.04 * k + diu(t)).toFixed(1), +(0.5 * gauss(k, 38, 2.5)).toFixed(1)]);
+  }
+  return rows;
+}
+async function loadForecast() {
+  try {
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + LAT + '&longitude=' + LON
+      + '&hourly=temperature_2m,precipitation&models=meteoswiss_icon_seamless'
+      + '&forecast_days=3&timezone=GMT&timeformat=unixtime';
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch(url, { signal: ctl.signal }); clearTimeout(to);
+    if (!r.ok) throw new Error(r.status);
+    const h = (await r.json()).hourly, get = k => h[k] || h[k + '_meteoswiss_icon_seamless'];
+    const tt = get('temperature_2m'), pp = get('precipitation');
+    const rows = h.time.map((t, i) => [t * 1000, tt[i], pp ? pp[i] ?? 0 : 0]).filter(x => x[1] != null);
+    if (rows.length < 12) throw new Error('zu wenig Daten');
+    return { rows, live: true };
+  } catch (e) { return { rows: fakeForecast(), live: false }; }
+}
+function forecastSummary(rows, now) {
+  const next = rows.filter(r => r[0] > now && r[0] <= now + 24 * 3600e3);
+  if (!next.length) return '';
+  const t = next.map(r => r[1]), mm = next.reduce((a, r) => a + (r[2] || 0), 0);
+  const wet = next.find(r => (r[2] || 0) >= 0.2);
+  const today = new Date(now).toDateString();
+  const when = ts => {
+    const d = new Date(ts), hm = d.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+    return d.toDateString() === today ? hm : d.toLocaleDateString('de-CH', { weekday: 'short' }) + ' ' + hm;
+  };
+  const rain = wet ? `Regen ab ${when(wet[0])} Uhr, insgesamt ${fmt(mm)} mm` : 'kein nennenswerter Regen';
+  return `Nächste 24 Stunden: <b>${fmt(Math.min(...t))} bis ${fmt(Math.max(...t))} °C</b>, ${rain}.`;
+}
+const nowPlugin = {
+  id: 'now',
+  afterDatasetsDraw(chart, _args, opt) {
+    const { ctx, chartArea: a, scales: { x } } = chart, px = x.getPixelForValue(opt.at);
+    ctx.save(); ctx.strokeStyle = opt.color; ctx.fillStyle = opt.color; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke(); ctx.setLineDash([]);
+    ctx.font = '11px system-ui, sans-serif'; ctx.fillText('Jetzt', px + 4, a.top + 12); ctx.restore();
+  },
+};
+function renderForecast(fc) {
+  const NOW = DATA.now, xmin = NOW - 24 * 3600e3, xmax = NOW + 48 * 3600e3;
+  const col = css('--c1'), rain = css('--rain'), muted = css('--muted'), grid = css('--line');
+  const meas = DATA.series.aussen.slice(-PER_DAY).map(r => ({ x: r[0], y: r[1] }));
+  const f = fc.rows.filter(r => r[0] >= NOW - 3600e3 && r[0] <= xmax);
+  const stepH = window.innerWidth < 600 ? 12 : 6;
+  if (fcChart) fcChart.destroy();
+  fcChart = new Chart(document.getElementById('fcchart'), {
+    type: 'line',
+    data: { datasets: [
+      { label: 'Gemessen', data: meas, yAxisID: 'y', borderColor: col, backgroundColor: col,
+        borderWidth: 2.2, pointRadius: 0, tension: 0.25, order: 1 },
+      { label: 'Prognose', data: f.map(r => ({ x: r[0], y: r[1] })), yAxisID: 'y', borderColor: col, backgroundColor: col,
+        borderWidth: 2.2, borderDash: [6, 4], pointRadius: 0, tension: 0.25, order: 1 },
+      { label: 'Regen (mm/h)', data: f.map(r => ({ x: r[0], y: r[2] })), yAxisID: 'y2', borderColor: hexA(rain, .85),
+        backgroundColor: hexA(rain, .3), fill: 'origin', stepped: 'before', borderWidth: 1, pointRadius: 0, order: 2 },
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      scales: {
+        x: { type: 'linear', min: xmin, max: xmax, grid: { color: grid },
+             afterBuildTicks: sc => {
+               const v = [];
+               for (let t = Math.ceil(xmin / 3600e3) * 3600e3; t <= xmax; t += 3600e3) if (new Date(t).getHours() % stepH === 0) v.push(t);
+               sc.ticks = v.map(value => ({ value }));
+             },
+             ticks: { color: muted, maxRotation: 0, callback: v => { const d = new Date(v);
+               return d.getHours() === 0 ? d.toLocaleString('de-CH', { weekday: 'short', day: 'numeric' })
+                 : d.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }); } } },
+        y: { position: 'left', grace: '10%', grid: { color: grid },
+             title: { display: true, text: 'Temperatur °C', color: muted }, ticks: { color: muted, callback: v => v + ' °' } },
+        y2: { position: 'right', min: 0, suggestedMax: 2, grid: { drawOnChartArea: false },
+              title: { display: true, text: 'Regen mm/h', color: muted }, ticks: { color: muted, callback: v => v + ' mm' } },
+      },
+      plugins: {
+        night: { color: css('--night') }, now: { at: NOW, color: muted },
+        legend: { onClick: () => {}, labels: { color: css('--text'), boxWidth: 14, boxHeight: 12,
+          generateLabels: ch => Chart.defaults.plugins.legend.labels.generateLabels(ch)
+            .map(it => ({ ...it, fillStyle: it.strokeStyle, lineWidth: 0, lineDash: [] })) } },
+        tooltip: { callbacks: {
+          title: it => new Date(it[0].parsed.x).toLocaleString('de-CH',
+            { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+          label: c => c.dataset.yAxisID === 'y2' ? `Regen: ${fmt(c.parsed.y)} mm/h` : `${c.dataset.label}: ${fmt(c.parsed.y)} °C`,
+        } },
+      },
+    },
+    plugins: [nightPlugin, nowPlugin],
+  });
+  document.getElementById('fcsum').innerHTML = forecastSummary(fc.rows, NOW);
+  document.getElementById('fcsrc').textContent = fc.live
+    ? 'Prognose: MeteoSchweiz-Modell (ICON) über Open-Meteo, Standort 46,838° N, 9,569° O. Gemessen: Fantasiedaten.'
+    : 'Prognose: Fantasiedaten, der Abruf bei Open-Meteo war hier nicht möglich. Auf klima.dombuzz.ch/proto.html wird die echte Prognose geladen.';
+}
+
 /* ---------- Start ---------- */
 document.getElementById('updated').textContent =
   'Stand ' + new Date(DATA.now).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
 renderCards();
 renderChart();
 // Diagramm bei Wechsel hell/dunkel neu zeichnen
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => renderChart());
-new MutationObserver(() => renderChart()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+const redraw = () => { renderChart(); if (FC) renderForecast(FC); };
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
+new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+loadForecast().then(fc => { FC = fc; renderForecast(fc); });
 </script>
 </body>
 </html>

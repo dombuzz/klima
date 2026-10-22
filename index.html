@@ -50,8 +50,6 @@
   .badge.out { color: var(--accent); }
   .badge.low { color: var(--warn); }
   .meta.lowbatt { color: var(--warn); font-weight: 600; }
-  .empty { position: absolute; inset: 0; display: grid; place-items: center;
-           color: var(--muted); font-size: .9rem; text-align: center; padding: 0 20px; }
   .hint { margin-top: 8px; font-size: .8rem; padding: 6px 8px; border-radius: 8px;
           background: color-mix(in srgb, var(--accent) 12%, transparent); }
   .hint.no { background: color-mix(in srgb, var(--muted) 12%, transparent); color: var(--muted); }
@@ -114,7 +112,7 @@
         <button data-v="365d" aria-pressed="false">Jahr</button>
       </div>
     </div>
-    <div class="chartbox"><canvas id="chart"></canvas><div class="empty" id="empty" hidden>Noch keine Verlaufsdaten für diesen Zeitraum.</div></div>
+    <div class="chartbox"><canvas id="chart"></canvas></div>
   </section>
 
   <footer>Aktualisiert sich alle 2 Minuten. Lüftungshinweis: Vergleich der absoluten Feuchte innen/aussen.</footer>
@@ -210,7 +208,6 @@ function renderChart(d) {
     borderDash: s.outdoor ? [5, 4] : [],
     pointRadius: 0, tension: 0.25, spanGaps: GAP[state.range],
   })).filter(ds => ds.data.length);
-  document.getElementById('empty').hidden = datasets.length > 0;
   document.getElementById('chart').style.visibility = datasets.length ? 'visible' : 'hidden';
 
   const long = state.range === '30d' || state.range === '365d';

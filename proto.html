@@ -120,8 +120,16 @@
     .card.outdoor { grid-column: 1 / -1; }
     .temp { font-size: 1.6rem; }
     .hum { font-size: 1rem; }
-    .chartbox { height: 300px; }
+    .chartbox { height: 340px; }
     section.chart { padding: 12px; }
+  }
+@media (max-width: 520px) {
+    .charthead { gap: 8px; }
+    .controls { flex: 1 1 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; align-items: end; }
+    .grp:last-child { grid-column: 1 / -1; }
+    .seg { display: flex; }
+    .seg button { flex: 1; padding: 6px 6px; font-size: .8rem; white-space: nowrap; }
+    .glabel { font-size: .64rem; }
   }
 </style>
 </head>
@@ -196,6 +204,7 @@ const TIPS = {
 const state = { sel: 'wohnzimmer', range: '24h', chart: null, mode: 'single', metric: 'temp', cmp: new Set(ROOMS.map(r => r.id)) };
 const isOn = id => state.mode === 'single' ? state.sel === id : state.cmp.has(id);
 
+const narrow = () => window.innerWidth < 600;
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const fmt = (n, d = 1) => Number(n).toLocaleString('de-CH', { minimumFractionDigits: d, maximumFractionDigits: d });
 const hexA = (hex, a) => {
@@ -330,9 +339,9 @@ function nightSpans(min, max) {
   return spans;
 }
 function nightPattern(ctx, color) {
-  const c = document.createElement('canvas'); c.width = c.height = 8;
+  const z = narrow() ? 10 : 8, c = document.createElement('canvas'); c.width = c.height = z;
   const g = c.getContext('2d'); g.strokeStyle = color; g.lineWidth = 1.3; g.beginPath();
-  g.moveTo(-1, 9); g.lineTo(9, -1); g.moveTo(-1, 1); g.lineTo(1, -1); g.moveTo(7, 9); g.lineTo(9, 7); g.stroke();
+  g.moveTo(-1, z + 1); g.lineTo(z + 1, -1); g.moveTo(-1, 1); g.lineTo(1, -1); g.moveTo(z - 1, z + 1); g.lineTo(z + 1, z - 1); g.stroke();
   return ctx.createPattern(c, 'repeat');
 }
 // Legende: Linien als Linienstück (auch gestrichelt), Flächen als Rechteck
@@ -344,7 +353,8 @@ const legendLabels = ch => Chart.defaults.plugins.legend.labels.generateLabels(c
 });
 const legendOpts = fixed => ({
   ...(fixed ? { onClick: () => {} } : {}),
-  labels: { color: css('--text'), usePointStyle: true, pointStyleWidth: 28, boxWidth: 28, boxHeight: 10, generateLabels: legendLabels },
+  labels: { color: css('--text'), usePointStyle: true, pointStyleWidth: narrow() ? 20 : 28, boxWidth: narrow() ? 20 : 28, boxHeight: 10,
+            padding: narrow() ? 8 : 10, font: { size: narrow() ? 11 : 12 }, generateLabels: legendLabels },
 });
 const nightPlugin = {
   id: 'night',
@@ -352,6 +362,7 @@ const nightPlugin = {
     if (opt.skip) return;
     const { ctx, chartArea: a, scales: { x } } = chart;
     ctx.save(); ctx.beginPath(); ctx.rect(a.left, a.top, a.width, a.height); ctx.clip();
+    ctx.globalAlpha = narrow() ? 0.6 : 1;
     ctx.fillStyle = nightPattern(ctx, opt.color);
     for (const [s, e] of nightSpans(x.min, x.max)) {
       const x0 = x.getPixelForValue(Math.max(s, x.min)), x1 = x.getPixelForValue(Math.min(e, x.max));
@@ -368,7 +379,7 @@ function tickValues(min, max, range) {
   if (range === '30d' || range === '365d') {
     const d = new Date(min); d.setHours(0, 0, 0, 0);
     for (; d.getTime() <= max; d.setDate(d.getDate() + 1)) {
-      if (d.getTime() >= min && (range === '365d' ? d.getDate() === 1 : d.getDay() === 1)) v.push(d.getTime());
+      if (d.getTime() >= min && (range === '365d' ? d.getDate() === 1 && (!narrow() || d.getMonth() % 2 === 0) : d.getDay() === 1)) v.push(d.getTime());
     }
     return v;
   }
@@ -376,7 +387,7 @@ function tickValues(min, max, range) {
     const d = new Date(t);
     if (range === '24h' ? d.getHours() % 4 === 0 : (d.getHours() === 0 && d.getMinutes() === 0)) v.push(t);
   }
-  return v;
+  return narrow() && range === '7d' ? v.filter((_, i) => i % 2 === 0) : v;
 }
 function renderSingle() {
   const i = ROOMS.findIndex(r => r.id === state.sel), room = ROOMS[i];
@@ -402,11 +413,11 @@ function renderSingle() {
              afterBuildTicks: s => { s.ticks = tickValues(xmin, xmax, state.range).map(value => ({ value })); },
              ticks: { color: muted, callback: tickFmt, maxRotation: 0 } },
         y: { position: 'left', grace: '12%', grid: { color: grid },
-             title: { display: true, text: 'Temperatur °C', color: muted },
-             ticks: { color: muted, callback: v => v + ' °' } },
+             title: { display: !narrow(), text: 'Temperatur °C', color: muted },
+             ticks: { color: muted, maxTicksLimit: narrow() ? 5 : 11, callback: v => v + ' °' } },
         y2: { position: 'right', suggestedMin: 20, suggestedMax: 80, grid: { drawOnChartArea: false },
-              title: { display: true, text: 'Luftfeuchtigkeit % rF', color: muted },
-              ticks: { color: muted, callback: v => v + ' %' } },
+              title: { display: !narrow(), text: 'Luftfeuchtigkeit % rF', color: muted },
+              ticks: { color: muted, maxTicksLimit: narrow() ? 4 : 11, callback: v => v + ' %' } },
       },
       plugins: {
         night: { color: css('--night'), skip: state.range === '30d' || state.range === '365d' },
@@ -453,8 +464,8 @@ function renderCompare() {
              afterBuildTicks: s => { s.ticks = tickValues(xmin, xmax, state.range).map(value => ({ value })); },
              ticks: { color: muted, callback: tickFmt, maxRotation: 0 } },
         y: { position: 'left', grace: '10%', grid: { color: grid },
-             title: { display: true, text: m === 'rh' ? 'Luftfeuchtigkeit % rF' : 'Temperatur °C', color: muted },
-             ticks: { color: muted, callback: v => v + (m === 'temp' ? ' °' : ' %') } },
+             title: { display: !narrow(), text: m === 'rh' ? 'Luftfeuchtigkeit % rF' : 'Temperatur °C', color: muted },
+             ticks: { color: muted, maxTicksLimit: narrow() ? 5 : 11, callback: v => v + (m === 'temp' ? ' °' : ' %') } },
       },
       plugins: {
         night: { color: css('--night'), skip: state.range === '30d' || state.range === '365d' },
@@ -594,11 +605,11 @@ const nowPlugin = {
   },
 };
 function renderForecast(fc) {
-  const NOW = DATA.now, xmin = NOW - 24 * 3600e3, xmax = NOW + 48 * 3600e3;
+  const NOW = DATA.now, xmin = NOW - 24 * 3600e3, xmax = NOW + (narrow() ? 24 : 48) * 3600e3;
   const col = css('--c1'), fcol = css('--c2'), rain = css('--rain'), muted = css('--muted'), grid = css('--line');
   const meas = DATA.series.aussen.slice(-PER_DAY).map(r => ({ x: r[0], y: r[1] }));
   const f = fc.rows.filter(r => r[0] >= NOW - 3600e3 && r[0] <= xmax);
-  const stepH = window.innerWidth < 600 ? 12 : 6;
+  const stepH = narrow() ? 12 : 6;
   if (fcChart) fcChart.destroy();
   fcChart = new Chart(document.getElementById('fcchart'), {
     type: 'line',
@@ -624,9 +635,9 @@ function renderForecast(fc) {
                return d.getHours() === 0 ? d.toLocaleString('de-CH', { weekday: 'short', day: 'numeric' })
                  : d.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }); } } },
         y: { position: 'left', grace: '10%', grid: { color: grid },
-             title: { display: true, text: 'Temperatur °C', color: muted }, ticks: { color: muted, callback: v => v + ' °' } },
+             title: { display: !narrow(), text: 'Temperatur °C', color: muted }, ticks: { color: muted, maxTicksLimit: narrow() ? 5 : 11, callback: v => v + ' °' } },
         y2: { position: 'right', min: 0, suggestedMax: 2, grid: { drawOnChartArea: false },
-              title: { display: true, text: 'Regen mm/h', color: muted }, ticks: { color: muted, callback: v => v + ' mm' } },
+              title: { display: !narrow(), text: 'Regen mm/h', color: muted }, ticks: { color: muted, maxTicksLimit: narrow() ? 3 : 11, callback: v => v + ' mm' } },
       },
       plugins: {
         night: { color: css('--night') }, now: { at: NOW, color: muted },
@@ -655,6 +666,11 @@ renderChart();
 const redraw = () => { renderChart(); if (FC) renderForecast(FC); };
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw);
 new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+let lastNarrow = narrow(), rz;
+window.addEventListener('resize', () => {
+  clearTimeout(rz);
+  rz = setTimeout(() => { if (narrow() !== lastNarrow) { lastNarrow = narrow(); redraw(); } }, 200);
+});
 loadForecast().then(fc => { FC = fc; renderForecast(fc); });
 </script>
 </body>

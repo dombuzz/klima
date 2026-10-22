@@ -335,6 +335,17 @@ function nightPattern(ctx, color) {
   g.moveTo(-1, 9); g.lineTo(9, -1); g.moveTo(-1, 1); g.lineTo(1, -1); g.moveTo(7, 9); g.lineTo(9, 7); g.stroke();
   return ctx.createPattern(c, 'repeat');
 }
+// Legende: Linien als Linienstück (auch gestrichelt), Flächen als Rechteck
+const legendLabels = ch => Chart.defaults.plugins.legend.labels.generateLabels(ch).map(it => {
+  const ds = ch.data.datasets[it.datasetIndex], c = ds.borderColor;
+  return ds.fill
+    ? { ...it, pointStyle: 'rect', fillStyle: c, strokeStyle: c, lineWidth: 0, lineDash: [] }
+    : { ...it, pointStyle: 'line', strokeStyle: c, lineWidth: 2.4, lineDash: ds.borderDash || [] };
+});
+const legendOpts = fixed => ({
+  ...(fixed ? { onClick: () => {} } : {}),
+  labels: { color: css('--text'), usePointStyle: true, pointStyleWidth: 28, boxWidth: 28, boxHeight: 10, generateLabels: legendLabels },
+});
 const nightPlugin = {
   id: 'night',
   beforeDatasetsDraw(chart, _args, opt) {
@@ -399,7 +410,7 @@ function renderSingle() {
       },
       plugins: {
         night: { color: css('--night'), skip: state.range === '30d' || state.range === '365d' },
-        legend: { labels: { color: css('--text'), boxWidth: 14, boxHeight: 12 } },
+        legend: legendOpts(false),
         tooltip: { callbacks: {
           title: it => new Date(it[0].parsed.x).toLocaleString('de-CH', tipOpts()),
           label: c => c.datasetIndex === 0 ? `Temperatur: ${fmt(c.parsed.y)} °C` : `Luftfeuchtigkeit: ${fmt(c.parsed.y, 0)} % rF`,
@@ -447,9 +458,7 @@ function renderCompare() {
       },
       plugins: {
         night: { color: css('--night'), skip: state.range === '30d' || state.range === '365d' },
-        legend: { onClick: () => {}, labels: { color: css('--text'), boxWidth: 14, boxHeight: 12,
-          generateLabels: ch => Chart.defaults.plugins.legend.labels.generateLabels(ch)
-            .map(it => ({ ...it, fillStyle: it.strokeStyle, lineWidth: 0, lineDash: [] })) } },
+        legend: legendOpts(true),
         tooltip: { itemSort: (a, b) => b.parsed.y - a.parsed.y, callbacks: {
           title: it => new Date(it[0].parsed.x).toLocaleString('de-CH', tipOpts()),
           label: c => `${c.dataset.label}: ${fmt(c.parsed.y, m === 'rh' ? 0 : 1)} ${unit}`,
@@ -586,7 +595,7 @@ const nowPlugin = {
 };
 function renderForecast(fc) {
   const NOW = DATA.now, xmin = NOW - 24 * 3600e3, xmax = NOW + 48 * 3600e3;
-  const col = css('--c1'), rain = css('--rain'), muted = css('--muted'), grid = css('--line');
+  const col = css('--c1'), fcol = css('--c2'), rain = css('--rain'), muted = css('--muted'), grid = css('--line');
   const meas = DATA.series.aussen.slice(-PER_DAY).map(r => ({ x: r[0], y: r[1] }));
   const f = fc.rows.filter(r => r[0] >= NOW - 3600e3 && r[0] <= xmax);
   const stepH = window.innerWidth < 600 ? 12 : 6;
@@ -596,7 +605,7 @@ function renderForecast(fc) {
     data: { datasets: [
       { label: 'Gemessen', data: meas, yAxisID: 'y', borderColor: col, backgroundColor: col,
         borderWidth: 2.2, pointRadius: 0, tension: 0.25, order: 1 },
-      { label: 'Prognose', data: f.map(r => ({ x: r[0], y: r[1] })), yAxisID: 'y', borderColor: col, backgroundColor: col,
+      { label: 'Prognose', data: f.map(r => ({ x: r[0], y: r[1] })), yAxisID: 'y', borderColor: fcol, backgroundColor: fcol,
         borderWidth: 2.2, borderDash: [6, 4], pointRadius: 0, tension: 0.25, order: 1 },
       { label: 'Regen (mm/h)', data: f.map(r => ({ x: r[0], y: r[2] })), yAxisID: 'y2', borderColor: hexA(rain, .85),
         backgroundColor: hexA(rain, .3), fill: 'origin', stepped: 'before', borderWidth: 1, pointRadius: 0, order: 2 },
@@ -621,9 +630,7 @@ function renderForecast(fc) {
       },
       plugins: {
         night: { color: css('--night') }, now: { at: NOW, color: muted },
-        legend: { onClick: () => {}, labels: { color: css('--text'), boxWidth: 14, boxHeight: 12,
-          generateLabels: ch => Chart.defaults.plugins.legend.labels.generateLabels(ch)
-            .map(it => ({ ...it, fillStyle: it.strokeStyle, lineWidth: 0, lineDash: [] })) } },
+        legend: legendOpts(true),
         tooltip: { callbacks: {
           title: it => new Date(it[0].parsed.x).toLocaleString('de-CH',
             { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),

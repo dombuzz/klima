@@ -17,6 +17,7 @@
     --line: #e4e2dc; --accent: #2f6f5e; --warn: #b4532a;
     --c1: #2f6f9e; --c2: #c2652f; --c3: #7a5aa6; --c4: #3f8f5a; --c5: #8a8a85;
     --night: rgba(29, 29, 27, .17); --tipbg: #1d1d1b; --tipfg: #f6f5f2;
+    --g-mode: #1d1d1b; --g-metric: #a8476b; --g-range: #8a6a10; --gon: #ffffff;
     --font: system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   @media (prefers-color-scheme: dark) {
@@ -25,6 +26,7 @@
       --line: #33332f; --accent: #6cc0a5; --warn: #e48a5c;
       --c1: #6aa8d8; --c2: #e48a5c; --c3: #b39ae0; --c4: #7cc48e; --c5: #b0b0aa;
       --night: rgba(236, 235, 230, .17); --tipbg: #ecebe6; --tipfg: #151514;
+      --g-mode: #ecebe6; --g-metric: #d77a9c; --g-range: #d9b44a; --gon: #151514;
       color-scheme: dark;
     }
   }
@@ -33,6 +35,7 @@
     --line: #33332f; --accent: #6cc0a5; --warn: #e48a5c;
     --c1: #6aa8d8; --c2: #e48a5c; --c3: #b39ae0; --c4: #7cc48e; --c5: #b0b0aa;
     --night: rgba(236, 235, 230, .17); --tipbg: #ecebe6; --tipfg: #151514;
+      --g-mode: #ecebe6; --g-metric: #d77a9c; --g-range: #d9b44a; --gon: #151514;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -86,9 +89,14 @@
          border-radius: 999px; background: var(--card); }
   .seg button { border: 0; background: none; color: var(--text); padding: 6px 13px;
                 border-radius: 999px; font: inherit; font-size: .85rem; cursor: pointer; }
-  .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .seg button[aria-pressed="true"] { background: var(--gc, var(--text)); color: var(--gon); }
   .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  .controls { display: flex; gap: 10px 18px; flex-wrap: wrap; align-items: flex-end; }
+  .grp { display: flex; flex-direction: column; gap: 4px; }
+  .glabel { font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-left: 6px; }
+  .seg[data-g="mode"] { --gc: var(--g-mode); }
+  .seg[data-g="metric"] { --gc: var(--g-metric); }
+  .seg[data-g="range"] { --gc: var(--g-range); }
   .linkbtn { border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit;
              font-size: .78rem; padding: 2px 10px; border-radius: 999px; cursor: pointer; }
   .linkbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -129,21 +137,23 @@
       <h2><span class="dot" id="chartdot"></span><span id="charttitle"></span>
         <span class="sub" id="chartsub">Temperatur und Luftfeuchtigkeit</span></h2>
       <div class="controls">
-      <div class="seg" id="mode">
-        <button data-v="single" aria-pressed="true">Einzeln</button>
-        <button data-v="compare" aria-pressed="false">Vergleich</button>
-      </div>
-      <div class="seg" id="metric" hidden>
-        <button data-v="temp" aria-pressed="true">Temperatur</button>
-        <button data-v="rh" aria-pressed="false">Relative Feuchte</button>
-        <button data-v="ah" aria-pressed="false">Absolute Feuchte</button>
-      </div>
-      <div class="seg" id="range">
-        <button data-v="24h" aria-pressed="true">24 h</button>
-        <button data-v="7d" aria-pressed="false">7 Tage</button>
-        <button data-v="30d" aria-pressed="false">30 Tage</button>
-        <button data-v="365d" aria-pressed="false">Jahr</button>
-      </div>
+        <div class="grp"><span class="glabel">Ansicht</span>
+          <div class="seg" id="mode" data-g="mode">
+            <button data-v="single" aria-pressed="true">Einzeln</button>
+            <button data-v="compare" aria-pressed="false">Vergleich</button>
+          </div></div>
+        <div class="grp" id="metricgrp" hidden><span class="glabel">Messgrösse</span>
+          <div class="seg" id="metric" data-g="metric">
+            <button data-v="temp" aria-pressed="true">Temperatur</button>
+            <button data-v="rh" aria-pressed="false">Feuchte</button>
+          </div></div>
+        <div class="grp"><span class="glabel">Zeitraum</span>
+          <div class="seg" id="range" data-g="range">
+            <button data-v="24h" aria-pressed="true">24 h</button>
+            <button data-v="7d" aria-pressed="false">7 Tage</button>
+            <button data-v="30d" aria-pressed="false">30 Tage</button>
+            <button data-v="365d" aria-pressed="false">Jahr</button>
+          </div></div>
       </div>
     </div>
     <div class="chartbox"><canvas id="chart"></canvas></div>
@@ -169,7 +179,6 @@ const NIGHT_START = [20, 0], NIGHT_END = [6, 0];
 const TIPS = {
   rf: 'Relative Feuchte: wie viel Wasserdampf die Luft im Verhältnis zum Maximum bei dieser Temperatur enthält. Angenehm sind etwa 40 bis 60 %.',
   dew: 'Taupunkt: Bei dieser Temperatur schlägt sich Feuchte als Wasser nieder. Ist eine Wand oder Fensterscheibe kälter, droht Schimmel.',
-  ah: 'Absolute Feuchte: tatsächliche Wassermenge pro Kubikmeter Luft. Damit lässt sich innen und aussen vergleichen, etwa fürs Lüften.',
 };
 const state = { sel: 'wohnzimmer', range: '24h', chart: null, mode: 'single', metric: 'temp', cmp: new Set(ROOMS.map(r => r.id)) };
 const isOn = id => state.mode === 'single' ? state.sel === id : state.cmp.has(id);
@@ -182,7 +191,6 @@ const hexA = (hex, a) => {
 };
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const gauss = (h, c, s) => Math.exp(-0.5 * ((h - c) / s) ** 2);
-function absHum(t, rh) { return 6.112 * Math.exp(17.67 * t / (t + 243.5)) * rh * 2.1674 / (273.15 + t); }
 function dewPoint(t, rh) { const a = 17.62, b = 243.12, g = Math.log(rh / 100) + a * t / (b + t); return b * g / (a - g); }
 
 /* ---------- Fantasiedaten ---------- */
@@ -285,12 +293,12 @@ function renderCards() {
   document.getElementById('cards').innerHTML = ROOMS.map((r, i) => {
     const rows = DATA.series[r.id], last = rows[rows.length - 1], day = rows.slice(-PER_DAY);
     const tmin = Math.min(...day.map(x => x[1])), tmax = Math.max(...day.map(x => x[1]));
-    const dp = dewPoint(last[1], last[2]), ah = absHum(last[1], last[2]);
+    const dp = dewPoint(last[1], last[2]);
     return `<article class="card${r.outdoor ? ' outdoor' : ''}${isOn(r.id) ? ' sel' : ''}" data-id="${r.id}" style="--rc:var(${COLORS[i]})">
       <h2><span class="dot"></span><button class="pick" type="button" aria-pressed="${isOn(r.id)}">${r.name}</button></h2>
       <div class="temp">${fmt(last[1])} °C</div>
       <div class="hum">${fmt(last[2], 0)} % <span class="tip" tabindex="0" data-tip="${TIPS.rf}">rF</span></div>
-      <div class="meta"><span class="tip" tabindex="0" data-tip="${TIPS.dew}">Taupunkt</span> ${fmt(dp)} °C · ${fmt(ah)} <span class="tip" tabindex="0" data-tip="${TIPS.ah}">g/m³</span></div>
+      <div class="meta"><span class="tip" tabindex="0" data-tip="${TIPS.dew}">Taupunkt</span> ${fmt(dp)} °C</div>
       ${spark(day, i)}
       <div class="meta">24 h: ${fmt(tmin)} – ${fmt(tmax)} °C</div>
     </article>`;
@@ -393,8 +401,8 @@ function renderSingle() {
 
 /* ---------- Vergleich: alle Räume, eine Messgrösse ---------- */
 function renderCompare() {
-  const m = state.metric, unit = { temp: '°C', ah: 'g/m³', rh: '% rF' }[m];
-  const val = p => m === 'ah' ? absHum(p[1], p[2]) : m === 'rh' ? p[2] : p[1];
+  const m = state.metric, unit = m === 'rh' ? '% rF' : '°C';
+  const val = p => m === 'rh' ? p[2] : p[1];
   const ref = rowsOf('aussen');
   const xmin = ref[0][0], xmax = ref[ref.length - 1][0];
   const muted = css('--muted'), grid = css('--line');
@@ -421,8 +429,8 @@ function renderCompare() {
              afterBuildTicks: s => { s.ticks = tickValues(xmin, xmax, state.range).map(value => ({ value })); },
              ticks: { color: muted, callback: tickFmt, maxRotation: 0 } },
         y: { position: 'left', grace: '10%', grid: { color: grid },
-             title: { display: true, text: { temp: 'Temperatur °C', ah: 'Absolute Feuchte g/m³', rh: 'Relative Feuchte % rF' }[m], color: muted },
-             ticks: { color: muted, callback: v => m === 'ah' ? fmt(v, 0) : v + (m === 'temp' ? ' °' : ' %') } },
+             title: { display: true, text: m === 'rh' ? 'Luftfeuchtigkeit % rF' : 'Temperatur °C', color: muted },
+             ticks: { color: muted, callback: v => v + (m === 'temp' ? ' °' : ' %') } },
       },
       plugins: {
         night: { color: css('--night'), skip: state.range === '30d' || state.range === '365d' },
@@ -441,19 +449,17 @@ function renderCompare() {
 }
 function renderChart() {
   const single = state.mode === 'single';
-  document.getElementById('metric').hidden = single;
+  document.getElementById('metricgrp').hidden = single;
   const note = document.getElementById('cmpnote');
   note.hidden = single || state.metric === 'temp';
-  note.textContent = state.metric === 'ah'
-    ? '· Absolute Feuchte ist unabhängig von der Raumtemperatur und deshalb zwischen Räumen vergleichbar.'
-    : '· Relative Feuchte hängt von der Raumtemperatur ab, der Vergleich zwischen Räumen ist nur grob.';
+  note.textContent = '· Die Feuchte (rF) hängt von der Raumtemperatur ab: wärmere Räume wirken trockener.';
   document.getElementById('cmphint').hidden = single;
   document.getElementById('cmpall').hidden = single || state.cmp.size === ROOMS.length;
   document.getElementById('chartdot').hidden = !single;
   const longR = state.range === '30d' || state.range === '365d';
   document.getElementById('nighti').hidden = longR; document.getElementById('nightt').hidden = longR;
   document.getElementById('chartsub').textContent = single ? 'Temperatur und Luftfeuchtigkeit'
-    : { temp: 'Temperatur', rh: 'Relative Feuchte', ah: 'Absolute Feuchte' }[state.metric]
+    : { temp: 'Temperatur', rh: 'Luftfeuchtigkeit' }[state.metric]
       + (state.cmp.size === ROOMS.length ? ', alle Räume' : ', Auswahl');
   if (single) renderSingle(); else renderCompare();
 }

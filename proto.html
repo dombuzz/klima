@@ -325,6 +325,11 @@ const TICK_OPTS = { '24h': { hour: '2-digit', minute: '2-digit' }, '7d': { weekd
 const TIP_OPTS = { '24h': 'dt', '7d': 'dt', '30d': 'dt', '365d': 'd' };
 
 /* ---------- Karten ---------- */
+// Temperaturachse: gemessener Bereich +/- 2 Grad, auf ganze Grad gerundet
+const tempRange = s => {
+  if (!isFinite(s.min) || !isFinite(s.max) || s.min > s.max) return;
+  s.min = Math.floor(s.min - 2); s.max = Math.ceil(s.max + 2);
+};
 const HUES = [[-10, 225], [0, 210], [10, 185], [18, 150], [21, 135], [24, 70], [28, 32], [34, 6]];
 function tempHue(t) {
   if (t <= HUES[0][0]) return HUES[0][1];
@@ -460,9 +465,9 @@ function renderSingle() {
         x: { type: 'linear', min: xmin, max: xmax, grid: { color: grid },
              afterBuildTicks: s => { s.ticks = tickValues(xmin, xmax, state.range).map(value => ({ value })); },
              ticks: { color: muted, callback: tickFmt, maxRotation: 0 } },
-        y: { position: 'left', grace: '12%', grid: { color: grid },
+        y: { position: 'left', afterDataLimits: tempRange, grid: { color: grid },
              title: { display: !narrow(), text: 'Temperatur °C', color: muted },
-             ticks: { color: muted, maxTicksLimit: narrow() ? 5 : 11, callback: v => v + ' °' } },
+             ticks: { color: muted, maxTicksLimit: narrow() ? 5 : 11, includeBounds: false, callback: v => v + ' °' } },
         y2: { position: 'right', suggestedMin: 20, suggestedMax: 80, grid: { drawOnChartArea: false },
               title: { display: !narrow(), text: 'Luftfeuchtigkeit % rF', color: muted },
               ticks: { color: muted, maxTicksLimit: narrow() ? 4 : 11, callback: v => v + ' %' } },
@@ -511,9 +516,9 @@ function renderCompare() {
         x: { type: 'linear', min: xmin, max: xmax, grid: { color: grid },
              afterBuildTicks: s => { s.ticks = tickValues(xmin, xmax, state.range).map(value => ({ value })); },
              ticks: { color: muted, callback: tickFmt, maxRotation: 0 } },
-        y: { position: 'left', grace: '10%', grid: { color: grid },
+        y: { position: 'left', grace: m === 'rh' ? '10%' : 0, afterDataLimits: s => { if (m === 'temp') tempRange(s); }, grid: { color: grid },
              title: { display: !narrow(), text: m === 'rh' ? 'Luftfeuchtigkeit % rF' : 'Temperatur °C', color: muted },
-             ticks: { color: muted, maxTicksLimit: narrow() ? 5 : 11, callback: v => v + (m === 'temp' ? ' °' : ' %') } },
+             ticks: { color: muted, maxTicksLimit: narrow() ? 5 : 11, includeBounds: m === 'rh', callback: v => v + (m === 'temp' ? ' °' : ' %') } },
       },
       plugins: {
         night: { color: css('--night'), skip: state.range === '30d' || state.range === '365d' },
@@ -682,8 +687,8 @@ function renderForecast(fc) {
              ticks: { color: muted, maxRotation: 0, callback: v => { const d = new Date(v);
                return d.getHours() === 0 ? d.toLocaleString('de-CH', { weekday: 'short', day: 'numeric' })
                  : d.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }); } } },
-        y: { position: 'left', grace: '10%', grid: { color: grid },
-             title: { display: !narrow(), text: 'Temperatur °C', color: muted }, ticks: { color: muted, maxTicksLimit: narrow() ? 5 : 11, callback: v => v + ' °' } },
+        y: { position: 'left', afterDataLimits: tempRange, grid: { color: grid },
+             title: { display: !narrow(), text: 'Temperatur °C', color: muted }, ticks: { color: muted, maxTicksLimit: narrow() ? 5 : 11, includeBounds: false, callback: v => v + ' °' } },
         y2: { position: 'right', min: 0, suggestedMax: 2, grid: { drawOnChartArea: false },
               title: { display: !narrow(), text: 'Regen mm/h', color: muted }, ticks: { color: muted, maxTicksLimit: narrow() ? 3 : 11, callback: v => v + ' mm' } },
       },

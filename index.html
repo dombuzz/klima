@@ -166,10 +166,24 @@ section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12
 .hint.high { background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 26%, transparent), color-mix(in srgb, var(--warn) 5%, transparent)); }
 .fcsum { padding: 10px 12px; border-radius: 10px;
          background: linear-gradient(100deg, color-mix(in srgb, var(--c2) 20%, transparent), color-mix(in srgb, var(--c1) 12%, transparent)); }
+.login { max-width: 340px; margin: 14vh auto 0; padding: 20px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+.login h1 { font-size: 1.3rem; margin: 0 0 14px; }
+.login label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+.login input { width: 100%; padding: 10px 12px; font: inherit; font-size: 1rem; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+.login input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.login button { margin-top: 12px; padding: 10px 16px; font: inherit; font-weight: 600; color: var(--gon); background: var(--g-mode); border: 0; border-radius: 8px; cursor: pointer; }
+.login p { margin: 10px 0 0; min-height: 1.2em; font-size: .85rem; color: var(--warn); }
 </style>
 </head>
 <body>
-<main>
+<form class="login" id="login" hidden>
+  <h1>Raumklima</h1>
+  <label for="pw">Passwort</label>
+  <input id="pw" type="password" autocomplete="current-password" required>
+  <button type="submit">Anmelden</button>
+  <p id="loginmsg" role="alert"></p>
+</form>
+<main id="app" hidden>
   <header>
     <h1>Raumklima</h1>
     <span class="updated" id="updated"></span>
@@ -214,12 +228,13 @@ section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12
     <div class="key"><span id="fcsrc"></span></div>
   </section>
 
-  <footer>Die Mini-Verläufe zeigen immer die letzten 24 Stunden. Klick auf eine Karte zeigt deren Verlauf, im Vergleich blendet er sie ein oder aus.</footer>
+  <footer>Die Mini-Verläufe zeigen immer die letzten 24 Stunden. Klick auf eine Karte zeigt deren Verlauf, im Vergleich blendet er sie ein oder aus. <button type="button" class="linkbtn" id="logout">Auf diesem Gerät abmelden</button></footer>
 </main>
 <div id="tipbox" role="tooltip" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
+function boot() {
 
 const API = 'https://klima.zappa-pfadi.workers.dev';
 const LAT = 46.83791, LON = 9.568806;
@@ -708,6 +723,42 @@ setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 12
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && D24 && Date.now() / 1000 - D24.now > 110) refresh();
 });
+
+}
+
+/* ---------- Passwort-Sperre (nur im Browser, hält zufällige Besucher fern) ---------- */
+const PW_HASH = 'cba1587cf1fe95976027e5bd3ef6bf407db58a29514d60799ab6a9d4c0a715ef';
+const OKKEY = 'klimaOk';
+let booted = false;
+async function hashPw(pw) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode('klima.dombuzz.ch'), iterations: 150000 }, key, 256);
+  return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function unlock() {
+  document.getElementById('login').hidden = true;
+  document.getElementById('app').hidden = false;
+  if (!booted) { booted = true; boot(); }
+}
+document.getElementById('login').addEventListener('submit', async e => {
+  e.preventDefault();
+  const pw = document.getElementById('pw'), msg = document.getElementById('loginmsg');
+  let h = '';
+  try { h = await hashPw(pw.value.trim()); } catch (err) { msg.textContent = 'Anmeldung in diesem Browser nicht möglich.'; return; }
+  if (h === PW_HASH) {
+    try { localStorage.setItem(OKKEY, h); } catch (err) {}
+    pw.value = ''; msg.textContent = ''; unlock();
+  } else { msg.textContent = 'Passwort falsch.'; pw.select(); }
+});
+document.getElementById('logout').addEventListener('click', () => {
+  try { localStorage.removeItem(OKKEY); } catch (err) {}
+  location.reload();
+});
+let remembered = '';
+try { remembered = localStorage.getItem(OKKEY) || ''; } catch (err) {}
+if (remembered === PW_HASH) unlock();
+else { document.getElementById('login').hidden = false; document.getElementById('pw').focus(); }
 </script>
 </body>
 </html>

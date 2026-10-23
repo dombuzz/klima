@@ -139,6 +139,32 @@
     .glabel { font-size: .64rem; }
   }
 </style>
+<style>
+/* v3: mehr Farbe und Verläufe auf Basis des bestehenden Dashboards */
+:root { --tl: 36%; --bg1: #dcecf4; --bg2: #f8e9db; --bg3: #dff0e4; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --tl: 72%; --bg1: #12283a; --bg2: #2a1c2c; --bg3: #12301f; } }
+:root[data-theme="dark"] { --tl: 72%; --bg1: #12283a; --bg2: #2a1c2c; --bg3: #12301f; }
+body { background:
+    radial-gradient(900px 520px at 6% -4%, var(--bg1), transparent 70%),
+    radial-gradient(800px 520px at 100% 8%, var(--bg2), transparent 70%),
+    radial-gradient(1000px 640px at 45% 112%, var(--bg3), transparent 70%),
+    var(--bg);
+  background-attachment: fixed; }
+h1 { color: var(--c1); font-weight: 700; font-size: 1.7rem; }
+.card { position: relative; overflow: hidden;
+        background: linear-gradient(155deg, color-mix(in srgb, var(--rc) 17%, var(--card)) 0%, var(--card) 62%); }
+.card.sel { background: linear-gradient(155deg, color-mix(in srgb, var(--rc) 30%, var(--card)) 0%, color-mix(in srgb, var(--rc) 7%, var(--card)) 78%);
+            box-shadow: 0 0 0 1px var(--rc), 0 8px 20px -10px var(--rc); }
+.temp { color: hsl(var(--th, 150) 72% var(--tl)); }
+section.chart { background: linear-gradient(180deg, color-mix(in srgb, var(--c1) 10%, var(--card)) 0%, var(--card) 42%); }
+section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12%, var(--card)) 0%, var(--card) 42%); }
+.seg button[aria-pressed="true"] { background: linear-gradient(135deg, var(--gc), color-mix(in srgb, var(--gc) 58%, var(--c3))); }
+.hint { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 24%, transparent), color-mix(in srgb, var(--accent) 5%, transparent)); }
+.hint.no { background: linear-gradient(90deg, color-mix(in srgb, var(--muted) 20%, transparent), color-mix(in srgb, var(--muted) 4%, transparent)); }
+.hint.high { background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 26%, transparent), color-mix(in srgb, var(--warn) 5%, transparent)); }
+.fcsum { padding: 10px 12px; border-radius: 10px;
+         background: linear-gradient(100deg, color-mix(in srgb, var(--c2) 20%, transparent), color-mix(in srgb, var(--c1) 12%, transparent)); }
+</style>
 </head>
 <body>
 <main>
@@ -269,7 +295,27 @@ function syncSeg(id, value) {
 }
 
 /* ---------- Karten ---------- */
-function spark(rows, now) {
+const HUES = [[-10, 225], [0, 210], [10, 185], [18, 150], [21, 135], [24, 70], [28, 32], [34, 6]];
+function tempHue(t) {
+  if (t <= HUES[0][0]) return HUES[0][1];
+  for (let i = 1; i < HUES.length; i++) {
+    if (t <= HUES[i][0]) { const [a, ha] = HUES[i - 1], [b, hb] = HUES[i]; return ha + (hb - ha) * (t - a) / (b - a); }
+  }
+  return HUES[HUES.length - 1][1];
+}
+// Verlauf entlang der Temperaturachse: kalt blau, angenehm grün, warm orange
+function gradTemp(ctx, area, scale) {
+  const g = ctx.createLinearGradient(0, area.bottom, 0, area.top), L = css('--tl') || '40%';
+  for (let k = 0; k <= 8; k++) g.addColorStop(k / 8, `hsl(${tempHue(scale.min + k / 8 * (scale.max - scale.min)).toFixed(0)} 72% ${L})`);
+  return g;
+}
+const tempLine = fallback => c => { const a = c.chart.chartArea; return a ? gradTemp(c.chart.ctx, a, c.chart.scales.y) : fallback; };
+const areaGrad = (color, a0, a1) => c => {
+  const a = c.chart.chartArea; if (!a) return hexA(color, a1);
+  const g = c.chart.ctx.createLinearGradient(0, a.top, 0, a.bottom);
+  g.addColorStop(0, hexA(color, a0)); g.addColorStop(1, hexA(color, a1)); return g;
+};
+function spark(rows, now, id) {
   if (rows.length < 2) return '';
   const v = rows.map(r => r[1]);
   const mn = Math.min(...v), mx = Math.max(...v), span = Math.max(mx - mn, 1.5), lo = (mx + mn) / 2 - span / 2;
@@ -281,7 +327,8 @@ function spark(rows, now) {
   const last = rows[rows.length - 1], x0 = (fx(rows[idx[0]][0]) * 120).toFixed(1), x1 = (fx(last[0]) * 120).toFixed(1);
   return `<div class="spark" aria-hidden="true">
     <svg viewBox="0 0 120 32" preserveAspectRatio="none">
-      <polygon class="area" points="${x0},32 ${pts.join(' ')} ${x1},32"/>
+      <defs><linearGradient id="sg-${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--rc);stop-opacity:.5"/><stop offset="1" style="stop-color:var(--rc);stop-opacity:0"/></linearGradient></defs>
+      <polygon class="area" style="fill:url(#sg-${id});fill-opacity:1" points="${x0},32 ${pts.join(' ')} ${x1},32"/>
       <polyline class="line" points="${pts.join(' ')}"/>
     </svg><span class="end" style="left:calc((100% - 5px) * ${fx(last[0]).toFixed(3)});top:${(y(last[1]) / 32 * 100).toFixed(1)}%"></span></div>`;
 }
@@ -303,10 +350,10 @@ function renderCards() {
     const badge = r.stale ? '<span class="badge off">offline</span>' : low ? '<span class="badge low">Akku laden</span>' : '';
     return `<article class="card${r.outdoor ? ' outdoor' : ''}${r.stale ? ' stale' : ''}${isOn(r.id) ? ' sel' : ''}" data-id="${esc(r.id)}" style="--rc:var(${COLORS[r.ci % COLORS.length]})">
       <h2><span class="dot"></span><button class="pick" type="button" aria-pressed="${isOn(r.id)}">${esc(r.name)}</button>${badge}</h2>
-      <div class="temp">${fmt(L.temp)} °C</div>
+      <div class="temp" style="--th:${tempHue(L.temp).toFixed(0)}">${fmt(L.temp)} °C</div>
       <div class="hum">${fmt(L.hum, 0)} % <span class="tip" tabindex="0" data-tip="${TIPS.rf}">rF</span></div>
       <div class="meta"><span class="tip" tabindex="0" data-tip="${TIPS.dew}">Taupunkt</span> ${fmt(dp)} °C${L.pressure ? ` · ${fmt(L.pressure, 0)} hPa` : ''}</div>
-      ${spark(rows, d.now * 1000)}
+      ${spark(rows, d.now * 1000, r.id.replace(/[^a-z0-9]/gi, ""))}
       ${mm ? `<div class="meta">24 h: ${fmt(mm.tmin)} – ${fmt(mm.tmax)} °C</div>` : ''}
       ${L.batt != null ? `<div class="meta${low ? ' lowbatt' : ''}">Akku ${fmt(L.batt, 2)} V · ca. ${battPct(L.batt)} %</div>` : ''}
       <div class="meta">${ago(d.now - L.ts)}</div>
@@ -334,7 +381,7 @@ function nightPattern(ctx, color) {
 }
 // Legende: Linien als Linienstück (auch gestrichelt), Flächen als Rechteck
 const legendLabels = ch => Chart.defaults.plugins.legend.labels.generateLabels(ch).map(it => {
-  const ds = ch.data.datasets[it.datasetIndex], c = ds.borderColor;
+  const ds = ch.data.datasets[it.datasetIndex], c = ds._lc || ds.borderColor;
   return ds.fill
     ? { ...it, pointStyle: 'rect', fillStyle: c, strokeStyle: c, lineWidth: 0, lineDash: [] }
     : { ...it, pointStyle: 'line', strokeStyle: c, lineWidth: 2.4, lineDash: ds.borderDash || [] };
@@ -388,10 +435,10 @@ function renderSingle() {
   state.chart = new Chart($('chart'), {
     type: 'line',
     data: { datasets: [
-      { label: 'Temperatur (°C)', data: temp, yAxisID: 'y', borderColor: col, backgroundColor: col,
+      { label: 'Temperatur (°C)', data: temp, yAxisID: 'y', borderColor: tempLine(col), _lc: col, backgroundColor: col,
         borderWidth: 2.2, pointRadius: sparse ? 3 : 0, tension: 0.25, spanGaps: GAP[state.range], order: 1 },
       { label: 'Luftfeuchtigkeit (% rF)', data: hum, yAxisID: 'y2', borderColor: hexA(col, .55),
-        backgroundColor: hexA(col, .16), fill: 'origin', borderWidth: 1, pointRadius: sparse ? 2 : 0, tension: 0.25,
+        backgroundColor: areaGrad(col, .5, .04), fill: 'origin', borderWidth: 1, pointRadius: sparse ? 2 : 0, tension: 0.25,
         spanGaps: GAP[state.range], order: 2 },
     ] },
     options: {
@@ -566,13 +613,13 @@ function renderForecast() {
   const f = FC ? FC.rows.filter(r => r[0] >= NOW - 3600e3 && r[0] <= xmax) : [];
   const stepH = narrow() ? 12 : 6;
   const datasets = [];
-  if (measured.length) datasets.push({ label: 'Gemessen', data: measured, yAxisID: 'y', borderColor: col, backgroundColor: col,
+  if (measured.length) datasets.push({ label: 'Gemessen', data: measured, yAxisID: 'y', borderColor: tempLine(col), _lc: col, backgroundColor: col,
     borderWidth: 2.2, pointRadius: measured.length < 3 ? 3 : 0, tension: 0.25, spanGaps: GAP['24h'], order: 1 });
   if (FC) datasets.push(
     { label: 'Prognose', data: f.map(r => ({ x: r[0], y: r[1] })), yAxisID: 'y', borderColor: fcol, backgroundColor: fcol,
       borderWidth: 2.2, borderDash: [6, 4], pointRadius: 0, tension: 0.25, order: 1 },
     { label: 'Regen (mm/h)', data: f.map(r => ({ x: r[0], y: r[2] })), yAxisID: 'y2', borderColor: hexA(rain, .85),
-      backgroundColor: hexA(rain, .3), fill: 'origin', stepped: 'before', borderWidth: 1, pointRadius: 0, order: 2 });
+      backgroundColor: areaGrad(rain, .65, .12), fill: 'origin', stepped: 'before', borderWidth: 1, pointRadius: 0, order: 2 });
   if (fcChart) fcChart.destroy();
   fcChart = new Chart($('fcchart'), {
     type: 'line', data: { datasets },

@@ -151,19 +151,11 @@ body { background:
     radial-gradient(1000px 640px at 45% 112%, var(--bg3), transparent 70%),
     var(--bg);
   background-attachment: fixed; }
-h1 { display: inline-block; font-weight: 700; background: linear-gradient(90deg, var(--c1), var(--accent) 55%, var(--c2));
-     -webkit-background-clip: text; background-clip: text; color: transparent; }
 .card { position: relative; overflow: hidden;
         background: linear-gradient(155deg, color-mix(in srgb, var(--rc) 17%, var(--card)) 0%, var(--card) 62%); }
-.card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 4px;
-                background: linear-gradient(90deg, var(--rc), color-mix(in srgb, var(--rc) 30%, var(--c2))); }
 .card.sel { background: linear-gradient(155deg, color-mix(in srgb, var(--rc) 30%, var(--card)) 0%, color-mix(in srgb, var(--rc) 7%, var(--card)) 78%);
             box-shadow: 0 0 0 1px var(--rc), 0 8px 20px -10px var(--rc); }
 .temp { color: hsl(var(--th, 150) 72% var(--tl)); }
-.hbar { position: relative; height: 6px; border-radius: 99px; margin: 9px 0 3px;
-        background: linear-gradient(90deg, #d9a441 0%, #8ec97f 38%, #4aa3c9 62%, #3a5fb0 100%); }
-.hbar i { position: absolute; top: -3px; width: 4px; height: 12px; border-radius: 2px; background: var(--text);
-          box-shadow: 0 0 0 2px var(--card); transform: translateX(-50%); }
 section.chart { background: linear-gradient(180deg, color-mix(in srgb, var(--c1) 10%, var(--card)) 0%, var(--card) 42%); }
 section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12%, var(--card)) 0%, var(--card) 42%); }
 .seg button[aria-pressed="true"] { background: linear-gradient(135deg, var(--gc), color-mix(in srgb, var(--gc) 58%, var(--c3))); }
@@ -360,7 +352,6 @@ function renderCards() {
       <h2><span class="dot"></span><button class="pick" type="button" aria-pressed="${isOn(r.id)}">${esc(r.name)}</button>${badge}</h2>
       <div class="temp" style="--th:${tempHue(L.temp).toFixed(0)}">${fmt(L.temp)} °C</div>
       <div class="hum">${fmt(L.hum, 0)} % <span class="tip" tabindex="0" data-tip="${TIPS.rf}">rF</span></div>
-      <div class="hbar" aria-hidden="true"><i style="left:${clamp(L.hum, 0, 100)}%"></i></div>
       <div class="meta"><span class="tip" tabindex="0" data-tip="${TIPS.dew}">Taupunkt</span> ${fmt(dp)} °C${L.pressure ? ` · ${fmt(L.pressure, 0)} hPa` : ''}</div>
       ${spark(rows, d.now * 1000, r.id.replace(/[^a-z0-9]/gi, ""))}
       ${mm ? `<div class="meta">24 h: ${fmt(mm.tmin)} – ${fmt(mm.tmax)} °C</div>` : ''}

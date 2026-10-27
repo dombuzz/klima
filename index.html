@@ -166,6 +166,17 @@ section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12
 .hint.high { background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 26%, transparent), color-mix(in srgb, var(--warn) 5%, transparent)); }
 .fcsum { padding: 10px 12px; border-radius: 10px;
          background: linear-gradient(100deg, color-mix(in srgb, var(--c2) 20%, transparent), color-mix(in srgb, var(--c1) 12%, transparent)); }
+section#smoke { background: linear-gradient(180deg, color-mix(in srgb, var(--c4) 12%, var(--card)) 0%, var(--card) 42%); }
+#smoke.warn { border-color: var(--warn); background: linear-gradient(180deg, color-mix(in srgb, var(--warn) 14%, var(--card)) 0%, var(--card) 42%); }
+.smk { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.smk li { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); min-width: 0; }
+.smk .nm { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.smk .nm .dot { background: var(--accent); }
+.smk li.bad { border-color: var(--warn); }
+.smk li.bad .dot { background: var(--warn); }
+.smk .st { margin-top: 2px; font-size: .9rem; }
+.smk li.bad .st { color: var(--warn); font-weight: 600; }
+@media (max-width: 520px) { .smk { grid-template-columns: 1fr; } }
 .login { max-width: 340px; margin: 14vh auto 0; padding: 20px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
 .login h1 { font-size: 1.3rem; margin: 0 0 14px; }
 .login label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
@@ -226,6 +237,15 @@ section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12
     <p class="fcsum" id="fcsum">Prognose wird geladen …</p>
     <div class="chartbox"><canvas id="fcchart"></canvas></div>
     <div class="key"><span id="fcsrc"></span></div>
+  </section>
+
+  <section class="chart" id="smoke" hidden>
+    <div class="charthead">
+      <h2><span class="dot" id="smokedot" style="background: var(--accent)"></span>Rauchmelder
+        <span class="sub" id="smokesum"></span></h2>
+    </div>
+    <ul class="smk" id="smokelist"></ul>
+    <div class="key"><span id="smokesrc"></span></div>
   </section>
 
   <footer>Die Mini-Verläufe zeigen immer die letzten 24 Stunden. Klick auf eine Karte zeigt deren Verlauf, im Vergleich blendet er sie ein oder aus. <button type="button" class="linkbtn" id="logout">Auf diesem Gerät abmelden</button></footer>
@@ -700,6 +720,51 @@ document.addEventListener('click', e => { const t = e.target.closest('.tip'); if
 document.addEventListener('keydown', e => { if (e.key === 'Escape') hideTip(); });
 window.addEventListener('scroll', hideTip, { passive: true });
 
+/* ---------- Rauchmelder (X-Sense, über GitHub Action alle 30 Min.) ---------- */
+const BATT_TXT = ['leer', 'schwach', 'gut', 'voll'];
+const SMOKE_STALE = 13 * 3600;   // Action schreibt spätestens alle 12 h
+function wlanTxt(dbm) {
+  if (dbm == null) return null;
+  return dbm >= -60 ? 'gut' : dbm >= -75 ? 'mittel' : 'schwach';
+}
+function smokeProblems(m) {
+  const p = [];
+  if (m.alarm) p.push('Alarm gemeldet');
+  if (m.online === false) p.push('offline');
+  if (m.lebensende) p.push('Lebensende erreicht, ersetzen');
+  if (m.batterie != null && m.batterie <= 1) p.push('Batterie ' + BATT_TXT[m.batterie]);
+  return p;
+}
+async function loadSmoke() {
+  let d;
+  try {
+    const res = await fetch('smoke.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) { $('smoke').hidden = true; return; }   // noch keine Daten
+    d = await res.json();
+  } catch (e) { return; }
+  const list = d.melder || [];
+  if (!list.length) { $('smoke').hidden = true; return; }
+  const age = Math.max(0, Date.now() / 1000 - Date.parse(d.checked) / 1000);
+  const stale = age > SMOKE_STALE;
+  let bad = 0;
+  $('smokelist').innerHTML = list.map(m => {
+    const p = smokeProblems(m); if (p.length) bad++;
+    const info = [];
+    if (m.batterie != null && !p.some(x => x.startsWith('Batterie'))) info.push('Batterie ' + (BATT_TXT[m.batterie] || m.batterie));
+    const w = wlanTxt(m.wlan); if (w && m.online !== false) info.push('WLAN ' + w);
+    return `<li class="${p.length ? 'bad' : ''}"><div class="nm"><span class="dot"></span>${esc(m.name)}</div>
+      <div class="st">${p.length ? esc(p.join(', ')) : 'bereit'}</div>
+      ${info.length ? `<div class="meta">${esc(info.join(' · '))}</div>` : ''}</li>`;
+  }).join('');
+  const n = list.length;
+  $('smokesum').textContent = bad ? `${bad} von ${n} brauchen Aufmerksamkeit`
+    : stale ? 'Status veraltet' : (n === 1 ? 'Melder bereit' : `alle ${n} bereit`);
+  $('smoke').classList.toggle('warn', bad > 0 || stale);
+  $('smokedot').style.background = bad || stale ? 'var(--warn)' : 'var(--accent)';
+  $('smokesrc').textContent = `Geprüft ${ago(age)} · Statusanzeige, kein Alarm: Abfrage alle 30 Minuten über die X-Sense-Cloud.`;
+  $('smoke').hidden = false;
+}
+
 /* ---------- Start ---------- */
 function showError(e) { $('updated').innerHTML = `<span class="error">Daten nicht erreichbar (${esc(e.message)})</span>`; }
 async function load() {
@@ -711,7 +776,7 @@ async function load() {
   } catch (e) { showError(e); }
 }
 async function refresh() {
-  await load();
+  await load(); loadSmoke();
   if (Date.now() - fcAt > 30 * 60e3) { const fc = await loadForecast(); if (fc) FC = fc; renderForecast(); }
 }
 const redraw = () => { if (D24) { renderChart(); renderForecast(); } };
@@ -723,6 +788,7 @@ window.addEventListener('resize', () => {
   rz = setTimeout(() => { if (narrow() !== lastNarrow) { lastNarrow = narrow(); redraw(); } }, 200);
 });
 load().then(async () => { FC = await loadForecast(); renderForecast(); });
+loadSmoke();
 // Alle 2 Minuten neu laden, aber nur wenn die Seite sichtbar ist
 setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 120000);
 document.addEventListener('visibilitychange', () => {

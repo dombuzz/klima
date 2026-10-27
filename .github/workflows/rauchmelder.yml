@@ -26,7 +26,7 @@ jobs:
           python-version: '3.12'
 
       - name: Bibliothek installieren
-        run: pip install 'python-xsense==0.0.16'
+        run: pip install 'python-xsense[async]==0.0.16'
 
       - name: Status abfragen
         env:

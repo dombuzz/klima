@@ -12,8 +12,6 @@ import os
 import sys
 from datetime import datetime, timezone
 
-from xsense import XSense
-
 OUT = sys.argv[1] if len(sys.argv) > 1 else 'smoke.json'
 PREFIX = 'Rauchmelder | '
 
@@ -43,6 +41,7 @@ def main():
     if not user or not pw:
         sys.exit('XSENSE_USER und XSENSE_PASS fehlen')
 
+    from xsense import XSense
     api = XSense()
     api.init()
     api.login(user, pw)

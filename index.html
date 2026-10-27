@@ -752,6 +752,7 @@ async function loadSmoke() {
     const info = [];
     if (m.batterie != null && !p.some(x => x.startsWith('Batterie'))) info.push('Batterie ' + (BATT_TXT[m.batterie] || m.batterie));
     const w = wlanTxt(m.wlan); if (w && m.online !== false) info.push('WLAN ' + w);
+    if (m.zuletzt) info.push('Meldung ' + ago(Math.max(0, Date.now() / 1000 - Date.parse(m.zuletzt) / 1000)));
     return `<li class="${p.length ? 'bad' : ''}"><div class="nm"><span class="dot"></span>${esc(m.name)}</div>
       <div class="st">${p.length ? esc(p.join(', ')) : 'bereit'}</div>
       ${info.length ? `<div class="meta">${esc(info.join(' · '))}</div>` : ''}</li>`;

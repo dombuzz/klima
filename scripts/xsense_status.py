@@ -54,7 +54,7 @@ def main():
                 try:
                     call(st)
                 except Exception as e:  # einzelne Abfragen dürfen fehlschlagen
-                    print(f'Hinweis: {call.__name__} für {st.type}: {e}')
+                    print(f'::notice::{call.__name__} für {st.type}: {type(e).__name__}: {e}')
 
             # WLAN-Melder ohne Basis: der Melder ist selbst die «Station»
             devices = list((st.devices or {}).values()) or [st]
@@ -62,7 +62,7 @@ def main():
                 data = dict(st.data) if d is not st else {}
                 data.update(d.data)
                 # Nur Feldnamen loggen (Repo ist öffentlich, Logs auch)
-                print(f'{d.type}: Felder {sorted(data.keys())}')
+                print(f'::notice::{d.type}: online={d.online}/{st.online}, Felder {sorted(data.keys())}')
                 online = d.online if d.online is not None else st.online
                 melder.append({
                     'name': clean_name(d.name or st.name),

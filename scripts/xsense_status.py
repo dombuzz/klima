@@ -87,4 +87,11 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        # Als Annotation ausgeben, damit der Grund in der Übersicht des Laufs steht
+        print(f'::error::{type(e).__name__}: {e}')
+        sys.exit(1)

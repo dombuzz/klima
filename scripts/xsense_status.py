@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else 'smoke.json'
 PREFIX = 'Rauchmelder | '
+OFFLINE_AFTER = 26 * 3600   # so lange ohne Meldung gilt ein Melder als offline
 
 
 def clean_name(name: str) -> str:
@@ -47,32 +48,36 @@ def main():
     api.login(user, pw)
     api.load_all()
 
+    now = datetime.now(timezone.utc)
     melder = []
     for house in api.houses.values():
         for st in (house.stations or {}).values():
-            for call in (api.get_station_state, api.get_state):
-                try:
-                    call(st)
-                except Exception as e:  # einzelne Abfragen dürfen fehlschlagen
-                    print(f'::notice::{call.__name__} für {st.type}: {type(e).__name__}: {e}')
+            # WLAN-Melder ohne Basis: Status steht im Shadow «mainpage», unter der eigenen Seriennummer.
+            # Das Flag onLine aus der Geräteliste ist unzuverlässig (Melder schlafen zwischen den Meldungen).
+            data = {}
+            try:
+                res = api.get_thing(st, 'mainpage')
+                rep = res.get('state', {}).get('reported', {})
+                data = rep.get(st.sn) or next((v for v in rep.values() if isinstance(v, dict)), {})
+            except Exception as e:
+                print(f'::warning::{st.type}: Status nicht abrufbar ({type(e).__name__})')
 
-            # WLAN-Melder ohne Basis: der Melder ist selbst die «Station»
-            devices = list((st.devices or {}).values()) or [st]
-            for d in devices:
-                data = dict(st.data) if d is not st else {}
-                data.update(d.data)
-                # Nur Feldnamen loggen (Repo ist öffentlich, Logs auch)
-                print(f'::notice::{d.type}: online={d.online}/{st.online}, Felder {sorted(data.keys())}')
-                online = d.online if d.online is not None else st.online
-                melder.append({
-                    'name': clean_name(d.name or st.name),
-                    'typ': d.type or st.type,
-                    'online': bool(online) if online is not None else None,
-                    'batterie': to_int(data.get('batInfo')),      # 0 leer … 3 voll
-                    'wlan': to_int(data.get('wifiRSSI')),         # dBm
-                    'alarm': to_bool(data.get('alarmStatus')),
-                    'lebensende': to_bool(data.get('isLifeEnd')),
-                })
+            seen = None
+            if t := data.get('onlineTime') or data.get('time'):
+                try:
+                    seen = datetime.strptime(str(t)[:14], '%Y%m%d%H%M%S').replace(tzinfo=timezone.utc)
+                except ValueError:
+                    pass
+            melder.append({
+                'name': clean_name(st.name),
+                'typ': st.type,
+                'online': (now - seen).total_seconds() < OFFLINE_AFTER if seen else None,
+                'zuletzt': seen.strftime('%Y-%m-%dT%H:%M:%SZ') if seen else None,
+                'batterie': to_int(data.get('batInfo')),       # 0 leer … 3 voll
+                'wlan': to_int(data.get('wifiRssi') or data.get('wifiRSSI')),   # dBm
+                'alarm': to_bool(data.get('alarmStatus')),
+                'lebensende': to_bool(data.get('isLifeEnd')),
+            })
 
     melder.sort(key=lambda m: m['name'])
     out = {

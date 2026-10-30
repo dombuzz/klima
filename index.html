@@ -173,6 +173,26 @@ section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12
 .login button { margin-top: 12px; padding: 10px 16px; font: inherit; font-weight: 600; color: var(--gon); background: var(--g-mode); border: 0; border-radius: 8px; cursor: pointer; }
 .login p { margin: 10px 0 0; min-height: 1.2em; font-size: .85rem; color: var(--warn); }
 </style>
+<style>
+/* v4: Milchglas und Leuchten (Stil wie tools.dombuzz.ch) */
+:root { --glass: rgba(255,255,255,.62); --glass-line: rgba(28,28,32,.09); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --glass: rgba(255,255,255,.045); --glass-line: rgba(255,255,255,.09); } }
+:root[data-theme="dark"] { --glass: rgba(255,255,255,.045); --glass-line: rgba(255,255,255,.09); }
+.card, section.chart, section#fc, .login {
+  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+  border-color: var(--glass-line); }
+.card { background: linear-gradient(155deg, color-mix(in srgb, var(--rc) 17%, transparent) 0%, transparent 62%), var(--glass); }
+.card.sel { background: linear-gradient(155deg, color-mix(in srgb, var(--rc) 30%, transparent) 0%, color-mix(in srgb, var(--rc) 7%, transparent) 78%), var(--glass); }
+section.chart { background: linear-gradient(180deg, color-mix(in srgb, var(--c1) 10%, transparent) 0%, transparent 42%), var(--glass); }
+section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12%, transparent) 0%, transparent 42%), var(--glass); }
+.login { background: var(--glass); }
+.card:hover { border-color: var(--rc); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rc) 55%, transparent), 0 0 22px color-mix(in srgb, var(--rc) 30%, transparent); }
+.card.sel { border-color: var(--rc); box-shadow: 0 0 0 1px var(--rc), 0 0 26px color-mix(in srgb, var(--rc) 38%, transparent); }
+.seg button[aria-pressed="true"] { box-shadow: 0 0 12px color-mix(in srgb, var(--gc) 40%, transparent); }
+.dot { box-shadow: 0 0 8px var(--rc); }
+.card h2 { flex-wrap: nowrap; align-items: flex-start; }
+.card h2 .dot { margin-top: .38em; }
+</style>
 </head>
 <body>
 <form class="login" id="login" hidden>

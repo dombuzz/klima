@@ -237,6 +237,7 @@ section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12
 function boot() {
 
 const API = 'https://klima.zappa-pfadi.workers.dev';
+const WP_API = 'https://wp.zappa-pfadi.workers.dev';   // Aussenfühler der Wärmepumpe (nur Temperatur)
 const LAT = 46.83791, LON = 9.568806;
 const COLORS = ['--c1', '--c2', '--c3', '--c4', '--c5'];
 const SPAN = { '24h': 86400e3, '7d': 7 * 86400e3, '30d': 30 * 86400e3, '365d': 365 * 86400e3 };
@@ -294,12 +295,24 @@ const toRows = a => (a || []).map(r => [r[0] * 1000, r[1], r[2]]);   // Sekunden
 const nowMs = () => (RD[state.range] || D24).now * 1000;
 const rowsOf = id => RD[state.range] ? toRows(RD[state.range].series[id]) : [];
 async function fetchRange(r) {
-  const res = await fetch(`${API}/data?range=${r}`);
+  const [res, wp] = await Promise.all([fetch(`${API}/data?range=${r}`), fetchWp(r)]);
   if (!res.ok) throw new Error(res.status);
-  return res.json();
+  const d = await res.json();
+  if (wp && wp.sensor && wp.sensor.last) {   // als zusätzliches Aussengerät einfügen
+    const id = wp.sensor.id;
+    d.latest = (d.latest || []).filter(s => s.id !== id).concat(wp.sensor);
+    d.series = { ...(d.series || {}), [id]: wp.series || [] };
+    if (wp.minmax) d.minmax = { ...(d.minmax || {}), [id]: wp.minmax };
+  }
+  return d;
 }
+// Die Wärmepumpe ist optional: Fehler dort blenden nur das Gerät aus
+async function fetchWp(r) {
+  try { const res = await fetch(`${WP_API}/klima?range=${r}`); return res.ok ? await res.json() : null; } catch { return null; }
+}
+const hasHum = s => s && s.last && s.last.hum != null;
 function applyData() {
-  ALL = D24.latest.slice().sort((a, b) => b.outdoor - a.outdoor).map((s, i) => ({ ...s, ci: i }));
+  ALL = D24.latest.slice().sort((a, b) => b.outdoor - a.outdoor || (a.source === 'wp') - (b.source === 'wp')).map((s, i) => ({ ...s, ci: i }));
   ROOMS = ALL.filter(s => s.last);
   if (!ROOMS.some(r => r.id === state.sel)) state.sel = (ROOMS.find(r => !r.outdoor) || ROOMS[0] || {}).id || null;
   // Neue Sensoren kommen beim ersten Auftauchen automatisch in den Vergleich
@@ -355,12 +368,12 @@ function spark(rows, now, id) {
     </svg><span class="end" style="left:calc((100% - 5px) * ${fx(last[0]).toFixed(3)});top:${(y(last[1]) / 32 * 100).toFixed(1)}%"></span></div>`;
 }
 function renderCards() {
-  const d = D24, out = ALL.find(s => s.outdoor && s.last && !s.stale);
+  const d = D24, out = ALL.find(s => s.outdoor && hasHum(s) && !s.stale);
   const outAH = out ? absHum(out.last.temp, out.last.hum) : null;
   const allUp = ALL.every(s => s.last);          // Lüftungshinweis erst, wenn alle Sensoren aufgeschaltet sind
   $('cards').innerHTML = ROOMS.map(r => {
     const L = r.last, mm = d.minmax[r.id], rows = toRows(d.series[r.id]);
-    const dp = dewPoint(L.temp, L.hum);
+    const dp = L.hum != null ? dewPoint(L.temp, L.hum) : null;
     let hint = '';
     if (allUp && !r.outdoor && !r.stale && outAH != null) {
       const diff = absHum(L.temp, L.hum) - outAH;
@@ -373,8 +386,9 @@ function renderCards() {
     return `<article class="card${r.outdoor ? ' outdoor' : ''}${r.stale ? ' stale' : ''}${isOn(r.id) ? ' sel' : ''}" data-id="${esc(r.id)}" style="--rc:var(${COLORS[r.ci % COLORS.length]})">
       <h2><span class="dot"></span><button class="pick" type="button" aria-pressed="${isOn(r.id)}">${esc(r.name)}</button>${badge}</h2>
       <div class="temp" style="--th:${tempHue(L.temp).toFixed(0)}">${fmt(L.temp)} °C</div>
-      <div class="hum">${fmt(L.hum, 0)} % <span class="tip" tabindex="0" data-tip="${TIPS.rf}">rF</span></div>
-      <div class="meta"><span class="tip" tabindex="0" data-tip="${TIPS.dew}">Taupunkt</span> ${fmt(dp)} °C${L.pressure ? ` · ${fmt(L.pressure, 0)} hPa` : ''}</div>
+      ${L.hum != null ? `<div class="hum">${fmt(L.hum, 0)} % <span class="tip" tabindex="0" data-tip="${TIPS.rf}">rF</span></div>
+      <div class="meta"><span class="tip" tabindex="0" data-tip="${TIPS.dew}">Taupunkt</span> ${fmt(dp)} °C${L.pressure ? ` · ${fmt(L.pressure, 0)} hPa` : ''}</div>`
+      : `<div class="hum">nur Temperatur</div>`}
       ${spark(rows, d.now * 1000, r.id.replace(/[^a-z0-9]/gi, ""))}
       ${mm ? `<div class="meta">24 h: ${fmt(mm.tmin)} – ${fmt(mm.tmax)} °C</div>` : ''}
       ${L.batt != null ? `<div class="meta${low ? ' lowbatt' : ''}">Akku ${fmt(L.batt, 2)} V · ca. ${battPct(L.batt)} %</div>` : ''}
@@ -451,7 +465,7 @@ function renderSingle() {
   const room = ALL.find(r => r.id === state.sel); if (!room) return;
   const col = css(COLORS[room.ci % COLORS.length]), muted = css('--muted'), grid = css('--line');
   const rows = rowsOf(room.id), xmax = nowMs(), xmin = xmax - SPAN[state.range], sparse = rows.length < 3;
-  const temp = rows.map(r => ({ x: r[0], y: r[1] })), hum = rows.map(r => ({ x: r[0], y: r[2] }));
+  const temp = rows.map(r => ({ x: r[0], y: r[1] })), hum = rows.map(r => ({ x: r[0], y: r[2] })), withHum = hasHum(room);
   const tickFmt = v => new Date(v).toLocaleString('de-CH', TICK_OPTS[state.range]);
   if (state.chart) state.chart.destroy();
   state.chart = new Chart($('chart'), {
@@ -462,7 +476,7 @@ function renderSingle() {
       { label: 'Luftfeuchtigkeit (% rF)', data: hum, yAxisID: 'y2', borderColor: hexA(col, .55),
         backgroundColor: areaGrad(col, .5, .04), fill: 'origin', borderWidth: 1, pointRadius: sparse ? 2 : 0, tension: 0.25,
         spanGaps: GAP[state.range], order: 2 },
-    ] },
+    ].slice(0, withHum ? 2 : 1) },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
       interaction: { mode: 'index', intersect: false },
@@ -473,7 +487,7 @@ function renderSingle() {
         y: { position: 'left', afterDataLimits: tempRange, grid: { color: grid },
              title: { display: !narrow(), text: 'Temperatur °C', color: muted },
              ticks: { color: muted, maxTicksLimit: narrow() ? 5 : 11, includeBounds: false, callback: v => v + ' °' } },
-        y2: { position: 'right', suggestedMin: 20, suggestedMax: 80, grid: { drawOnChartArea: false },
+        y2: { display: withHum, position: 'right', suggestedMin: 20, suggestedMax: 80, grid: { drawOnChartArea: false },
               title: { display: !narrow(), text: 'Luftfeuchtigkeit % rF', color: muted },
               ticks: { color: muted, maxTicksLimit: narrow() ? 4 : 11, callback: v => v + ' %' } },
       },
@@ -496,7 +510,7 @@ function renderCompare() {
   const xmax = nowMs(), xmin = xmax - SPAN[state.range];
   const muted = css('--muted'), grid = css('--line');
   const tickFmt = v => new Date(v).toLocaleString('de-CH', TICK_OPTS[state.range]);
-  const datasets = ROOMS.filter(r => state.cmp.has(r.id)).map(r => {
+  const datasets = ROOMS.filter(r => state.cmp.has(r.id) && (m !== 'rh' || hasHum(r))).map(r => {
     const col = css(COLORS[r.ci % COLORS.length]), rows = rowsOf(r.id);
     return {
       label: r.name, data: rows.map(p => ({ x: p[0], y: val(p) })),
@@ -545,7 +559,7 @@ function renderChart() {
   $('chartdot').hidden = !single;
   const longR = state.range === '30d' || state.range === '365d';
   $('nighti').hidden = longR; $('nightt').hidden = longR;
-  $('chartsub').textContent = single ? 'Temperatur und Luftfeuchtigkeit'
+  $('chartsub').textContent = single ? (hasHum(ALL.find(r => r.id === state.sel)) ? 'Temperatur und Luftfeuchtigkeit' : 'Temperatur')
     : { temp: 'Temperatur', rh: 'Luftfeuchtigkeit' }[state.metric] + (ROOMS.every(r => state.cmp.has(r.id)) ? ', alle Räume' : ', Auswahl');
   if (single) renderSingle(); else renderCompare();
 }
@@ -626,7 +640,8 @@ const nowPlugin = {
 
 function renderForecast() {
   if (!D24) return;
-  const out = ALL.find(s => s.outdoor && s.last);
+  // Eigener Aussensensor bevorzugt, sonst der Fühler der Wärmepumpe
+  const out = ALL.find(s => s.outdoor && s.last && s.source !== 'wp') || ALL.find(s => s.outdoor && s.last);
   const measured = out ? toRows(D24.series[out.id]).map(r => ({ x: r[0], y: r[1] })) : [];
   $('fc').hidden = !FC && !measured.length;
   if ($('fc').hidden) return;

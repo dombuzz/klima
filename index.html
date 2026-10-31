@@ -542,7 +542,7 @@ function renderCompare() {
     type: 'line', data: { datasets },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
-      interaction: { mode: 'index', intersect: false },
+      interaction: { mode: 'x', intersect: false },
       scales: {
         x: { type: 'linear', min: xmin, max: xmax, grid: { color: grid },
              afterBuildTicks: s => { s.ticks = tickValues(xmin, xmax, state.range).map(value => ({ value })); },

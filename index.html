@@ -554,7 +554,7 @@ function renderCompare() {
       plugins: {
         night: { color: css('--night'), skip: state.range === '30d' || state.range === '365d' },
         legend: legendOpts(true),
-        tooltip: { itemSort: (a, b) => b.parsed.y - a.parsed.y, callbacks: {
+        tooltip: { itemSort: (a, b) => b.parsed.y - a.parsed.y, filter: (it, i, all) => all.findIndex(o => o.datasetIndex === it.datasetIndex) === i, callbacks: {
           title: it => new Date(it[0].parsed.x).toLocaleString('de-CH', tipOpts()),
           label: c => `${c.dataset.label}: ${fmt(c.parsed.y, m === 'rh' ? 0 : 1)} ${unit}`,
         } },

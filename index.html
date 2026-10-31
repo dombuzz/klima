@@ -70,6 +70,7 @@
   .temp { font-size: 2.1rem; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
   .card.stale .temp, .card.stale .hum { opacity: .45; }
   .badge.off, .badge.low { color: var(--warn); border-color: var(--warn); }
+  .badge.cellar { color: var(--muted); border-color: currentColor; opacity: .85; }
   .meta.lowbatt { color: var(--warn); font-weight: 600; }
   .hint { margin-top: 8px; font-size: .8rem; padding: 6px 8px; border-radius: 8px;
           background: color-mix(in srgb, var(--accent) 12%, transparent); }
@@ -331,9 +332,10 @@ async function fetchWp(r) {
 }
 const hasHum = s => s && s.last && s.last.hum != null;
 function applyData() {
-  ALL = D24.latest.slice().sort((a, b) => b.outdoor - a.outdoor || (a.source === 'wp') - (b.source === 'wp')).map((s, i) => ({ ...s, ci: i }));
+  // Reihenfolge: Aussen, Wohnräume, Kellerräume (Flag "keller" in SENSORS beim Worker)
+  ALL = D24.latest.slice().sort((a, b) => b.outdoor - a.outdoor || !!a.keller - !!b.keller || (a.source === 'wp') - (b.source === 'wp')).map((s, i) => ({ ...s, ci: i }));
   ROOMS = ALL.filter(s => s.last);
-  if (!ROOMS.some(r => r.id === state.sel)) state.sel = (ROOMS.find(r => !r.outdoor) || ROOMS[0] || {}).id || null;
+  if (!ROOMS.some(r => r.id === state.sel)) state.sel = (ROOMS.find(r => !r.outdoor && !r.keller) || ROOMS.find(r => !r.outdoor) || ROOMS[0] || {}).id || null;
   // Neue Sensoren kommen beim ersten Auftauchen automatisch in den Vergleich
   for (const id of [...state.cmp]) if (!ROOMS.some(r => r.id === id)) state.cmp.delete(id);
   for (const r of ROOMS) if (!seen.has(r.id)) { seen.add(r.id); state.cmp.add(r.id); }
@@ -401,7 +403,7 @@ function renderCards() {
       else if (diff < -1) hint = '<div class="hint no">Draussen feuchter: Lüften bringt Feuchte herein.</div>';
     }
     const low = L.batt != null && L.batt < BATT_LOW;
-    const badge = r.stale ? '<span class="badge off">offline</span>' : low ? '<span class="badge low">Akku laden</span>' : '';
+    const badge = r.stale ? '<span class="badge off">offline</span>' : low ? '<span class="badge low">Akku laden</span>' : r.keller ? '<span class="badge cellar">Keller</span>' : '';
     return `<article class="card${r.outdoor ? ' outdoor' : ''}${r.stale ? ' stale' : ''}${isOn(r.id) ? ' sel' : ''}" data-id="${esc(r.id)}" style="--rc:var(${COLORS[r.ci % COLORS.length]})">
       <h2><span class="dot"></span><button class="pick" type="button" aria-pressed="${isOn(r.id)}">${esc(r.name)}</button>${badge}</h2>
       <div class="temp" style="--th:${tempHue(L.temp).toFixed(0)}">${fmt(L.temp)} °C</div>

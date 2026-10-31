@@ -71,9 +71,12 @@
   .card.stale .temp, .card.stale .hum { opacity: .45; }
   .badge.off, .badge.low { color: var(--warn); border-color: var(--warn); }
   .badge.cellar { color: var(--muted); border-color: currentColor; opacity: .85; }
-  .gh { grid-column: 1 / -1; margin: 6px 0 -2px; font-size: .72rem; font-weight: 600; letter-spacing: .08em;
-        text-transform: uppercase; color: var(--muted); }
-  .gh:first-child { margin-top: 0; }
+  /* Bereiche: ganze Gruppen stehen nebeneinander, solange sie in die Zeile passen; sonst neue Zeile.
+     Ist eine Gruppe breiter als die Zeile, füllt sie die Zeile und bricht intern um. */
+  #cards { --cw: 200px; --gp: 12px; --gg: 28px; display: flex; flex-wrap: wrap; gap: 18px var(--gg); align-items: flex-start; }
+  .zonegrp { width: calc(var(--n) * var(--cw) + (var(--n) - 1) * var(--gp) + .5px); max-width: 100%; min-width: 0; }
+  .zgrid { display: grid; gap: var(--gp); grid-template-columns: repeat(auto-fill, minmax(var(--cw), 1fr)); }
+  .gh { margin: 0 0 8px 2px; font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .meta.lowbatt { color: var(--warn); font-weight: 600; }
   .hint { margin-top: 8px; font-size: .8rem; padding: 6px 8px; border-radius: 8px;
           background: color-mix(in srgb, var(--accent) 12%, transparent); }
@@ -113,7 +116,7 @@
   .linkbtn { border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit;
              font-size: .78rem; padding: 2px 10px; border-radius: 999px; cursor: pointer; }
   .linkbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .grid.cmp .card:not(.sel) { opacity: .55; }
+  #cards.cmp .card:not(.sel) { opacity: .55; }
   .chartbox { position: relative; height: 340px; }
   .key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 10px; color: var(--muted); font-size: .8rem; }
   .key i { width: 22px; height: 12px; border-radius: 3px; border: 1px solid var(--line);
@@ -128,10 +131,9 @@
   footer { color: var(--muted); font-size: .78rem; margin-top: 16px; }
 
   @media (max-width: 520px) {
-    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    #cards { --cw: calc((100vw - 44px) / 2); --gp: 10px; --gg: 10px; gap: 14px var(--gg); }
     .card { padding: 12px 12px 10px; }
     .card h2 { gap: 6px; }
-    .card h2.wrap, .card h2 { flex-wrap: wrap !important; }
     .badge { font-size: .64rem; padding: 1px 5px; flex: none; }
     .temp { font-size: 1.6rem; }
     .hum { font-size: 1rem; }
@@ -197,7 +199,7 @@ section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12
 .card.sel { border-color: var(--rc); box-shadow: 0 0 0 1px var(--rc), 0 0 26px color-mix(in srgb, var(--rc) 38%, transparent); }
 .seg button[aria-pressed="true"] { box-shadow: 0 0 12px color-mix(in srgb, var(--gc) 40%, transparent); }
 .dot { box-shadow: 0 0 8px var(--rc); }
-.card h2 { flex-wrap: nowrap; align-items: flex-start; }
+.card h2 { flex-wrap: wrap; align-items: flex-start; }
 .card h2 .dot { margin-top: .38em; }
 </style>
 </head>
@@ -214,7 +216,7 @@ section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12
     <h1>Raumklima</h1>
     <span class="updated" id="updated"></span>
   </header>
-  <div class="grid" id="cards"></div>
+  <div id="cards"></div>
 
   <section class="chart" id="mainchart" hidden>
     <div class="charthead">
@@ -400,10 +402,7 @@ function renderCards() {
   const allUp = ALL.every(s => s.last);          // Lüftungshinweis erst, wenn alle Sensoren aufgeschaltet sind
   const grp = r => r.outdoor ? 'Aussen' : r.keller ? 'Keller' : 'Wohnen';
   const multi = new Set(ROOMS.map(grp)).size > 1;   // Gruppentitel erst, wenn es mehrere Bereiche gibt
-  let lastGrp = null;
-  $('cards').innerHTML = ROOMS.map(r => {
-    const head = multi && grp(r) !== lastGrp ? `<h3 class="gh">${grp(r)}</h3>` : '';
-    lastGrp = grp(r);
+  const cardsHtml = ROOMS.map(r => {
     const L = r.last, mm = d.minmax[r.id], rows = toRows(d.series[r.id]);
     const dp = L.hum != null ? dewPoint(L.temp, L.hum) : null;
     let hint = '';
@@ -418,7 +417,7 @@ function renderCards() {
     const shortName = r.outdoor ? (r.name.replace(/^Aussen\s*[·\-–:]\s*/i, '') || r.name) : r.name;
     const zone = `<span class="badge cellar">${r.outdoor ? 'Aussen' : r.keller ? 'Keller' : 'Wohnen'}</span>`;
     const badge = r.stale ? '<span class="badge off">offline</span>' : low ? '<span class="badge low">Akku laden</span>' : zone;
-    return head + `<article class="card${r.outdoor ? ' outdoor' : ''}${r.stale ? ' stale' : ''}${isOn(r.id) ? ' sel' : ''}" data-id="${esc(r.id)}" style="--rc:var(${COLORS[r.ci % COLORS.length]})">
+    return `<article class="card${r.outdoor ? ' outdoor' : ''}${r.stale ? ' stale' : ''}${isOn(r.id) ? ' sel' : ''}" data-id="${esc(r.id)}" style="--rc:var(${COLORS[r.ci % COLORS.length]})">
       <h2><span class="dot"></span><button class="pick" type="button" aria-pressed="${isOn(r.id)}">${esc(shortName)}</button>${badge}</h2>
       <div class="temp" style="--th:${tempHue(L.temp).toFixed(0)}">${fmt(L.temp)} °C</div>
       ${L.hum != null ? `<div class="hum">${fmt(L.hum, 0)} % <span class="tip" tabindex="0" data-tip="${TIPS.rf}">rF</span></div>
@@ -430,7 +429,10 @@ function renderCards() {
       <div class="meta">${ago(d.now - L.ts)}</div>
       ${hint}
     </article>`;
-  }).join('');
+  });
+  const groups = [];
+  ROOMS.forEach((r, i) => { const g = grp(r); let e = groups.find(x => x.name === g); if (!e) groups.push(e = { name: g, cards: [] }); e.cards.push(cardsHtml[i]); });
+  $('cards').innerHTML = groups.map(g => `<section class="zonegrp" style="--n:${g.cards.length}">${multi ? `<h3 class="gh">${g.name}</h3>` : ''}<div class="zgrid">${g.cards.join('')}</div></section>`).join('');
 }
 
 /* ---------- Diagramme ---------- */

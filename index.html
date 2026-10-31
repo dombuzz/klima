@@ -403,9 +403,13 @@ function renderCards() {
       else if (diff < -1) hint = '<div class="hint no">Draussen feuchter: Lüften bringt Feuchte herein.</div>';
     }
     const low = L.batt != null && L.batt < BATT_LOW;
-    const badge = r.stale ? '<span class="badge off">offline</span>' : low ? '<span class="badge low">Akku laden</span>' : r.keller ? '<span class="badge cellar">Keller</span>' : '';
+    // Aussengeräte: "Aussen" als Etikett statt im Namen (z. B. "Aussen · Wärmepumpe" -> "Wärmepumpe" + Etikett)
+    const shortName = r.outdoor ? (r.name.replace(/^Aussen\s*[·\-–:]\s*/i, '') || r.name) : r.name;
+    const zone = r.outdoor ? (shortName !== 'Aussen' ? '<span class="badge cellar">Aussen</span>' : '')
+               : r.keller ? '<span class="badge cellar">Keller</span>' : '';
+    const badge = r.stale ? '<span class="badge off">offline</span>' : low ? '<span class="badge low">Akku laden</span>' : zone;
     return `<article class="card${r.outdoor ? ' outdoor' : ''}${r.stale ? ' stale' : ''}${isOn(r.id) ? ' sel' : ''}" data-id="${esc(r.id)}" style="--rc:var(${COLORS[r.ci % COLORS.length]})">
-      <h2><span class="dot"></span><button class="pick" type="button" aria-pressed="${isOn(r.id)}">${esc(r.name)}</button>${badge}</h2>
+      <h2><span class="dot"></span><button class="pick" type="button" aria-pressed="${isOn(r.id)}">${esc(shortName)}</button>${badge}</h2>
       <div class="temp" style="--th:${tempHue(L.temp).toFixed(0)}">${fmt(L.temp)} °C</div>
       ${L.hum != null ? `<div class="hum">${fmt(L.hum, 0)} % <span class="tip" tabindex="0" data-tip="${TIPS.rf}">rF</span></div>
       <div class="meta"><span class="tip" tabindex="0" data-tip="${TIPS.dew}">Taupunkt</span> ${fmt(dp)} °C${L.pressure ? ` · ${fmt(L.pressure, 0)} hPa` : ''}</div>`

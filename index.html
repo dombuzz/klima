@@ -256,7 +256,7 @@ section#fc { background: linear-gradient(180deg, color-mix(in srgb, var(--c2) 12
           </div></div>
       </div>
     </div>
-    <div class="zoomtb" id="zoomtb" hidden><span class="zhint">Zoom: zwei Finger, Strg + Mausrad oder Tasten · Doppelklick setzt zurück</span><button type="button" class="linkbtn" id="znow" hidden>Jetzt</button><button type="button" class="linkbtn" id="zreset" hidden>Zoom zurücksetzen</button><button type="button" class="linkbtn" id="zout" aria-label="Herauszoomen">－</button><button type="button" class="linkbtn" id="zin" aria-label="Hineinzoomen">＋</button></div>
+    <div class="zoomtb" id="zoomtb" hidden><span class="zhint">Zoom: zwei Finger, Strg + Mausrad oder Tasten</span><button type="button" class="linkbtn" id="zlast" hidden>Letzte</button><button type="button" class="linkbtn" id="znow" hidden>Jetzt</button><button type="button" class="linkbtn" id="zreset" hidden>Zurücksetzen</button><button type="button" class="linkbtn" id="zout" aria-label="Herauszoomen">－</button><button type="button" class="linkbtn" id="zin" aria-label="Hineinzoomen">＋</button></div>
     <div class="chartbox"><canvas id="chart"></canvas></div>
     <div class="key"><i id="nighti" aria-hidden="true"></i><span id="nightt">Schraffiert: Nacht (20:00 bis 06:00 Uhr)</span><span id="cmphint" hidden>Karten anklicken, um Räume ein- oder auszublenden.</span><button type="button" class="linkbtn" id="cmpall" hidden>Alle Räume zeigen</button><span id="cmpnote" hidden></span></div>
   </section>
@@ -534,6 +534,17 @@ function zoomUi(chart) {
   const z = !!(chart && chart.isZoomedOrPanned && chart.isZoomedOrPanned());
   $('zreset').hidden = !z;
   $('znow').hidden = !z || !(zoomLimitMax(chart) - chart.scales.x.max > 60e3);
+  $('zlast').hidden = !z || Math.abs(lastMeasure(chart) - chart.scales.x.max) < 60e3;
+}
+function lastMeasure(chart) {
+  let m = -Infinity;
+  chart.data.datasets.forEach((d, i) => { if (chart.isDatasetVisible(i) && d.data && d.data.length) m = Math.max(m, d.data[d.data.length - 1].x); });
+  return isFinite(m) ? m : zoomLimitMax(chart);
+}
+function zoomToLast(chart) {
+  const mx = Math.min(lastMeasure(chart), zoomLimitMax(chart)), w = chart.scales.x.max - chart.scales.x.min;
+  chart.zoomScale('x', { min: mx - w, max: mx }, 'none');
+  zoomUi(chart);
 }
 function zoomLimitMax(chart) {
   const l = chart.options.plugins.zoom && chart.options.plugins.zoom.limits;
@@ -549,11 +560,11 @@ function afterChart() {
   if (zoomWin && state.range === '24h') { try { c.zoomScale('x', zoomWin, 'none'); } catch (e) {} }
   zoomUi(c);
 }
+$('zlast').addEventListener('click', () => { if (state.chart && state.chart.zoomScale) zoomToLast(state.chart); });
 $('znow').addEventListener('click', () => { if (state.chart && state.chart.zoomScale) zoomToNow(state.chart); });
 $('zin').addEventListener('click', () => { if (state.chart && state.chart.zoom) { state.chart.zoom({ x: 1.6 }); zoomUi(state.chart); } });
 $('zout').addEventListener('click', () => { if (state.chart && state.chart.zoom) { state.chart.zoom({ x: 1 / 1.6 }); zoomUi(state.chart); } });
 $('zreset').addEventListener('click', () => { if (state.chart && state.chart.resetZoom) { state.chart.resetZoom(); zoomUi(state.chart); } });
-$('chart').addEventListener('dblclick', () => { if (state.chart && state.chart.resetZoom) { state.chart.resetZoom(); zoomUi(state.chart); } });
 
 function renderSingle() {
   const room = ALL.find(r => r.id === state.sel); if (!room) return;
@@ -841,6 +852,8 @@ window.addEventListener('resize', () => {
 load().then(async () => { FC = await loadForecast(); renderForecast(); });
 // Alle 2 Minuten neu laden, aber nur wenn die Seite sichtbar ist
 setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 120000);
+const staleCheck = () => { if (document.visibilityState === 'visible' && D24 && Date.now() / 1000 - D24.now > 110) refresh(); };
+window.addEventListener('pageshow', staleCheck); window.addEventListener('focus', staleCheck);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && D24 && Date.now() / 1000 - D24.now > 110) refresh();
 });
